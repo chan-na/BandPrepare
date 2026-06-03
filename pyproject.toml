@@ -28,6 +28,17 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# RoFormer stem models (bs_roformer, mel_band_roformer). Kept optional so the
+# base install stays lean and Intel-mac-safe. numba/llvmlite are capped because
+# newer releases drop x86_64-macOS wheels (mirroring the torch<2.3 situation).
+roformer = [
+    "rotary-embedding-torch>=0.3.6",
+    "beartype>=0.18",
+    "einops>=0.8",
+    "librosa>=0.10",
+    "numba>=0.59,<0.61",
+    "llvmlite>=0.42,<0.44",
+]
 
 [project.scripts]
 bandprepare = "bandprepare.cli:main"

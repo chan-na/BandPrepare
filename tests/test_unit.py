@@ -13,32 +13,79 @@ import pytest
 
 from bandprepare import device as device_mod
 from bandprepare.cli import parse_stems, default_output_dir
-from bandprepare.errors import DependencyError
+from bandprepare.errors import DependencyError, ModelError
 from bandprepare.pipeline import Options, planned_outputs
+from bandprepare.separation import registry
 from bandprepare.separation.drums import DRUM_STEMS
 from bandprepare.separation.stems import STEM_ORDER
 
 
 def test_parse_stems_all():
-    assert parse_stems("all") == list(STEM_ORDER)
+    assert parse_stems("all", STEM_ORDER) == list(STEM_ORDER)
 
 
 def test_parse_stems_subset_is_canonical_order():
-    assert parse_stems("bass,vocals,drums") == ["vocals", "drums", "bass"]
+    assert parse_stems("bass,vocals,drums", STEM_ORDER) == ["vocals", "drums", "bass"]
 
 
 def test_parse_stems_dedup_and_case():
-    assert parse_stems("DRUMS,drums") == ["drums"]
+    assert parse_stems("DRUMS,drums", STEM_ORDER) == ["drums"]
 
 
 def test_parse_stems_unknown():
     with pytest.raises(ValueError):
-        parse_stems("vocals,kazoo")
+        parse_stems("vocals,kazoo", STEM_ORDER)
 
 
 def test_parse_stems_empty():
     with pytest.raises(ValueError):
-        parse_stems(" , ")
+        parse_stems(" , ", STEM_ORDER)
+
+
+def test_parse_stems_rejects_stem_not_in_model():
+    # guitar/piano are not produced by a 4-stem model.
+    four = ("vocals", "drums", "bass", "other")
+    with pytest.raises(ValueError):
+        parse_stems("vocals,guitar", four)
+    assert parse_stems("all", four) == list(four)
+
+
+def test_registry_defaults_resolve():
+    stem = registry.resolve_stem(registry.DEFAULT_STEM_MODEL)
+    drum = registry.resolve_drum(registry.DEFAULT_DRUM_MODEL)
+    assert stem.kind == "stem" and stem.output_stems == STEM_ORDER
+    assert drum.kind == "drum" and drum.output_stems == DRUM_STEMS
+
+
+def test_registry_unknown_model_raises():
+    with pytest.raises(ModelError):
+        registry.resolve_stem("does_not_exist")
+    with pytest.raises(ModelError):
+        registry.resolve_drum("does_not_exist")
+
+
+def test_list_models_table_mentions_models():
+    table = registry.format_table()
+    assert registry.DEFAULT_STEM_MODEL in table
+    assert registry.DEFAULT_DRUM_MODEL in table
+
+
+def test_registry_has_added_models():
+    # Phase 1/2 additions are registered with the expected output stems.
+    assert set(registry.stem_model_ids()) >= {
+        "htdemucs_6s", "htdemucs_ft", "bs_roformer", "mel_band_roformer"}
+    assert set(registry.drum_model_ids()) >= {"larsnet", "drumsep"}
+    assert registry.resolve_stem("htdemucs_ft").output_stems == ("vocals", "drums", "bass", "other")
+    assert registry.resolve_stem("bs_roformer").output_stems == ("vocals", "drums", "bass", "other")
+    # Mel-Band is a 2-stem vocals/instrumental model (no drums) → drum-split off.
+    assert registry.resolve_stem("mel_band_roformer").output_stems == ("vocals", "other")
+    assert registry.resolve_drum("drumsep").output_stems == ("kick", "snare", "toms", "cymbals")
+
+
+def test_parse_stems_4stem_model_rejects_guitar():
+    four = registry.resolve_stem("bs_roformer").output_stems
+    with pytest.raises(ValueError):
+        parse_stems("vocals,guitar", four)
 
 
 def test_default_output_dir():

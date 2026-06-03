@@ -182,7 +182,44 @@ bandprepare 내곡.mp3 --stems vocals,bass
 bandprepare 내곡.mp3 --stems vocals,drums,bass
 ```
 
-선택 가능: `vocals, drums, bass, guitar, piano, other` (또는 `all`).
+선택 가능한 스템은 **선택한 모델에 따라 다릅니다**(아래 "분리 모델 바꾸기" 참고).
+기본 모델(`htdemucs_6s`)은 `vocals, drums, bass, guitar, piano, other` (또는 `all`).
+
+### 🧠 분리 모델 바꾸기 (모델 선택)
+
+1단계(악기)와 2단계(드럼)에 쓸 모델을 각각 고를 수 있습니다. 먼저 사용 가능한 모델 목록:
+
+```bash
+bandprepare --list-models
+```
+
+```bash
+# 악기 분리 모델 바꾸기
+bandprepare 내곡.mp3 --stem-model htdemucs_ft          # 4스템(보컬/드럼/베이스/other), 고품질
+bandprepare 내곡.mp3 --stem-model bs_roformer          # 4스템, RoFormer (SOTA급)
+bandprepare 내곡.mp3 --stem-model mel_band_roformer    # 보컬/반주 2스템 추출(보컬 품질 최상)
+
+# 드럼 세부 분리 모델 바꾸기
+bandprepare 내곡.mp3 --drum-model drumsep              # 4조각(kick/snare/toms/cymbals), MIT
+bandprepare 내곡.mp3 --drum-model larsnet              # 5조각(+hihat), 기본값(비상업 라이선스)
+```
+
+| 1단계 모델 | 스템 | 특징 | 라이선스 |
+|-----------|------|------|----------|
+| `htdemucs_6s` (기본) | 6 (vocals/drums/bass/**guitar/piano**/other) | 기타·피아노까지 분리 | MIT |
+| `htdemucs_ft` | 4 (vocals/drums/bass/other) | Demucs 고품질 fine-tuned | MIT |
+| `bs_roformer` | 4 (vocals/drums/bass/other) | RoFormer, SOTA급 품질 | MIT |
+| `mel_band_roformer` | 2 (vocals/other) | 보컬/반주 추출 특화(최상) | MIT |
+
+| 2단계 모델 | 조각 | 특징 | 라이선스 |
+|-----------|------|------|----------|
+| `larsnet` (기본) | 5 (kick/snare/**hihat**/cymbals/toms) | 하이햇 별도 분리 | **CC BY-NC(비상업)** |
+| `drumsep` | 4 (kick/snare/toms/cymbals) | 하이햇 미분리, 상업 가능 | MIT |
+
+> 💡 RoFormer 모델(`bs_roformer`/`mel_band_roformer`)은 추가 의존성이 필요합니다:
+> `uv pip install -e ".[roformer]"` (또는 `pip install -e ".[roformer]"`).
+> 첫 실행 시 체크포인트(약 500–870 MB)를 자동 다운로드해 `~/.cache/bandprepare/roformer` 에 캐시합니다.
+> `mel_band_roformer`는 2스템(보컬/반주)이라 드럼 세부 분리가 자동으로 꺼집니다.
 
 ### 💾 mp3 / flac 로 받기
 
@@ -236,7 +273,10 @@ bandprepare 내곡.mp3 --overwrite
 bandprepare <input_audio> [options]
 
   -o, --output DIR              출력 디렉터리 (기본: ./output/<입력파일명>/)
-  --stems LIST                  분리할 악기 선택 (기본: all). 예: vocals,drums,bass
+  --stem-model NAME             악기 분리 모델 (기본: htdemucs_6s). --list-models 참고
+  --drum-model NAME             드럼 세부 분리 모델 (기본: larsnet). --list-models 참고
+  --list-models                 사용 가능한 모델 목록 출력 후 종료
+  --stems LIST                  분리할 악기 선택 (기본: all, 선택지는 모델별로 다름)
   --no-drum-split               드럼 세부 분리 단계를 건너뜀
   --format {wav,mp3,flac}       출력 포맷 (기본: wav)
   --device {auto,cpu,cuda,mps}  연산 장치 (기본: auto)
@@ -250,14 +290,21 @@ bandprepare <input_audio> [options]
 
 ## 처리 파이프라인 / Pipeline
 
-| 단계 | 모델 | 출력 |
+두 단계 모두 모델을 선택할 수 있습니다(`--stem-model`/`--drum-model`, `--list-models`).
+기본값:
+
+| 단계 | 기본 모델 | 출력 |
 |------|------|------|
 | **1. 악기 분리** | [Demucs `htdemucs_6s`](https://github.com/facebookresearch/demucs) | `vocals`, `drums`, `bass`, `guitar`, `piano`, `other` |
 | **2. 드럼 세부 분리** | [LarsNet](https://github.com/polimi-ispl/larsnet) | `kick`, `snare`, `hihat`, `cymbals`(크래쉬+라이드), `toms` |
 
-- 1단계 가중치는 첫 실행 시 자동 다운로드(`~/.cache/torch`).
-- 2단계(LarsNet) 체크포인트(약 562 MB)도 첫 실행 시 자동 다운로드 →
-  `~/.cache/bandprepare/larsnet` 에 캐시.
+선택 가능한 모델 전체는 STEP 5의 "분리 모델 바꾸기" 표를 참고하세요
+(1단계: `htdemucs_6s`/`htdemucs_ft`/`bs_roformer`/`mel_band_roformer`,
+2단계: `larsnet`/`drumsep`).
+
+- 1단계 Demucs 가중치는 첫 실행 시 자동 다운로드(`~/.cache/torch`).
+- 그 외 모델 체크포인트(LarsNet ~562 MB, RoFormer ~500–870 MB, DrumSep ~167 MB)는
+  첫 실행 시 자동 다운로드 → `~/.cache/bandprepare/<모델>` 에 캐시.
 
 ## 출력 구조 / Output layout
 
@@ -275,6 +322,8 @@ output/<곡이름>/
 
 > **플랫폼 메모**: `torch`/`torchaudio`는 `<2.3`으로 고정. Intel(x86_64) macOS용
 > PyTorch 휠은 2.2.2가 마지막이기 때문입니다. Linux·Apple Silicon에서도 정상 설치됩니다.
+> RoFormer extra(`.[roformer]`)의 `numba`/`llvmlite`도 같은 이유로 상한을 둡니다
+> (최신 릴리스는 x86_64 macOS 휠을 제공하지 않음).
 
 ## 동작 확인 (샘플 실행) / Verified run
 
@@ -313,12 +362,17 @@ bandprepare assets/sample.wav -o output/sample
 > 드럼 세부 분리 결과물의 **상업적 이용은 제한**됩니다. 상업적 용도라면 `--no-drum-split`
 > 로 1단계 결과(Demucs, MIT)만 사용하세요.
 
-### 후보 모델 조사 메모
+### 모델 선택지 / Model choices
 
-요구 분류(킥/스네어/하이햇/크래쉬/톰)에 가장 잘 맞는 것은 **LarsNet**(5 stem:
-kick/snare/toms/hihat/**cymbals**)이라 이를 채택했습니다. 대안인
-[DrumSep](https://github.com/inagoy/drumsep)(Hybrid Demucs 기반)도 검토했으나
-기본 4 stem(kick/snare/cymbals/toms)으로 하이햇이 별도 분리되지 않아 후순위로 두었습니다.
+요구 분류(킥/스네어/하이햇/크래쉬/톰)에 가장 잘 맞는 **LarsNet**(5 stem,
+하이햇 별도)을 드럼 기본값으로 둡니다. 다만 LarsNet 체크포인트는 비상업 라이선스라,
+상업 가능한 [DrumSep](https://github.com/inagoy/drumsep)(Hybrid Demucs, 4 stem,
+하이햇 미분리)도 `--drum-model drumsep` 로 선택할 수 있습니다.
+
+악기 분리는 기본 **Demucs `htdemucs_6s`**(6스템, 기타·피아노 포함) 외에
+`htdemucs_ft`(4스템 고품질), **RoFormer** 계열(`bs_roformer` 4스템,
+`mel_band_roformer` 보컬/반주 2스템 — [ZFTurbo MSS-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+의 모델 코드를 벤더링)을 선택할 수 있습니다.
 
 ## 알려진 한계 / Known limitations
 
@@ -379,7 +433,14 @@ src/bandprepare/
 ├── audio.py               # 입출력 / ffmpeg 점검
 ├── device.py              # --device 해석
 ├── separation/
-│   ├── stems.py           # 1단계: Demucs
-│   └── drums.py           # 2단계: LarsNet 래퍼 + 체크포인트 다운로드
-└── vendor/larsnet/        # 벤더링된 LarsNet 모델 코드
+│   ├── base.py            # Separator 프로토콜 + ModelInfo
+│   ├── registry.py        # 모델 카탈로그(--stem-model/--drum-model/--list-models)
+│   ├── download.py        # 가중치 다운로드/캐시 공용 헬퍼
+│   ├── stems.py           # Demucs 백엔드 (htdemucs_6s/htdemucs_ft)
+│   ├── roformer.py        # RoFormer 백엔드 (bs_roformer/mel_band_roformer)
+│   ├── drums.py           # LarsNet 백엔드
+│   └── drumsep.py         # DrumSep(inagoy) 백엔드
+└── vendor/
+    ├── larsnet/           # 벤더링된 LarsNet 모델 코드
+    └── roformer/          # 벤더링된 BS/Mel-Band RoFormer (ZFTurbo v1.0.12, MIT)
 ```

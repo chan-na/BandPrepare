@@ -1,8 +1,11 @@
-"""Stage 2 — drum-kit separation with LarsNet.
+"""LarsNet drum-kit backend.
 
-Splits the Demucs ``drums`` stem into five pieces: kick, snare, hihat, cymbals
+Splits a ``drums`` stem into five pieces: kick, snare, hihat, cymbals
 (crash/ride), toms. The pretrained checkpoints (~562 MB, CC BY-NC 4.0) are
 downloaded once from the authors' Google Drive and cached locally.
+
+``torch``/``yaml`` are imported lazily so importing this module (e.g. to read
+:data:`DRUM_STEMS` from the registry) stays cheap.
 """
 
 from __future__ import annotations
@@ -10,14 +13,17 @@ from __future__ import annotations
 import os
 import zipfile
 from pathlib import Path
-
-import torch
-import yaml
+from typing import TYPE_CHECKING
 
 from ..errors import ModelError, SeparationError
 from ..logging_utils import get_logger, step
+from .base import ModelInfo
 
-# LarsNet output stems, in display order. (cymbals == crash + ride.)
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import torch
+
+# LarsNet output stems, in display order. (cymbals == crash + ride.) Also the
+# source of truth for this model's ``output_stems``.
 DRUM_STEMS = ("kick", "snare", "hihat", "cymbals", "toms")
 
 LARSNET_SR = 44100
@@ -108,6 +114,8 @@ def ensure_checkpoints(verbose: bool = False) -> dict[str, Path]:
 
 def _write_config(checkpoints: dict[str, Path]) -> Path:
     """Generate a minimal LarsNet ``config.yaml`` pointing at cached weights."""
+    import yaml
+
     config: dict = {
         "global": {"sr": LARSNET_SR},
         "inference_models": {stem: str(path) for stem, path in checkpoints.items()},
@@ -121,8 +129,8 @@ def _write_config(checkpoints: dict[str, Path]) -> Path:
     return path
 
 
-def _run(drums_wav: torch.Tensor, device: str, wiener_exponent: float | None,
-         config_path: Path) -> dict[str, torch.Tensor]:
+def _run(drums_wav: "torch.Tensor", device: str, wiener_exponent: float | None,
+         config_path: Path) -> dict[str, "torch.Tensor"]:
     from ..vendor.larsnet import LarsNet
 
     net = LarsNet(
@@ -135,9 +143,9 @@ def _run(drums_wav: torch.Tensor, device: str, wiener_exponent: float | None,
     return {stem: wav.detach().cpu() for stem, wav in stems.items()}
 
 
-def separate(drums_wav: torch.Tensor, input_sr: int, device: str, *,
+def separate(drums_wav: "torch.Tensor", input_sr: int, device: str, *,
              wiener_exponent: float | None = 1.0,
-             verbose: bool = False) -> dict[str, torch.Tensor]:
+             verbose: bool = False) -> dict[str, "torch.Tensor"]:
     """Split a ``(channels, samples)`` drum stem into per-piece tensors.
 
     ``wiener_exponent`` enables alpha-Wiener post-filtering to reduce bleed
@@ -173,3 +181,21 @@ def separate(drums_wav: torch.Tensor, input_sr: int, device: str, *,
         raise SeparationError(
             f"드럼 세부 분리 실패 / Drum separation failed: {exc}"
         ) from exc
+
+
+class LarsNetSeparator:
+    """Adapter exposing LarsNet through the :class:`Separator` protocol."""
+
+    def __init__(self, info: ModelInfo, device: str, *,
+                 wiener_exponent: float | None = 1.0, verbose: bool = False):
+        self.info = info
+        self._device = device
+        self._wiener_exponent = wiener_exponent
+        self._verbose = verbose
+
+    def separate(self, wav: "torch.Tensor", input_sr: int, *,
+                 progress: bool = True) -> dict[str, "torch.Tensor"]:
+        return separate(
+            wav, input_sr, self._device,
+            wiener_exponent=self._wiener_exponent, verbose=self._verbose,
+        )
