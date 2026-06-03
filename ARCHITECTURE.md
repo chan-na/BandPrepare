@@ -1,0 +1,297 @@
+# BandPrepare 아키텍처 / Architecture
+
+BandPrepare의 내부 구조와 설계 결정을 정리합니다. (사용법은 [README.md](README.md) 참고)
+
+---
+
+## 1. 개요 / Overview
+
+BandPrepare는 음원 한 곡을 **2단계**로 분리하는 CLI입니다.
+
+```
+입력 음원 (mp3/wav/flac/m4a …)
+        │
+        ▼
+┌────────────────────────────────────────────────────────────┐
+│ Stage 1 — 악기 분리 (stem)        --stem-model               │
+│   htdemucs_6s / htdemucs_ft / bs_roformer / mel_band_roformer│
+│   → {vocals, drums, bass, (guitar, piano,) other …}          │
+└───────────────┬──────────────────────────────────────────────┘
+                │  "drums" 스템
+                ▼
+┌────────────────────────────────────────────────────────────┐
+│ Stage 2 — 드럼 세부 분리 (drum)    --drum-model              │
+│   larsnet / drumsep                                          │
+│   → {kick, snare, (hihat,) cymbals, toms}                    │
+└───────────────┬──────────────────────────────────────────────┘
+                ▼
+   output/<곡>/instruments/*.wav,  output/<곡>/drums/*.wav
+```
+
+두 단계 모두 **여러 모델 중 선택**할 수 있고, 각 모델은 동일한 `Separator`
+인터페이스 뒤에 숨겨진 **어댑터**로 구현됩니다. 선택지·메타데이터는 단일
+**레지스트리**(`separation/registry.py`)가 관리합니다.
+
+---
+
+## 2. 모듈 구성 / Module map
+
+```
+src/bandprepare/
+├── cli.py                  # 인자 파싱, --list-models, 모델별 --stems 검증, 진입점
+├── pipeline.py             # 2단계 오케스트레이션 (Options, run, planned_outputs)
+├── audio.py                # 입출력 / ffmpeg 점검 (load_track, save_waveform)
+├── device.py               # --device 해석 (auto/cpu/cuda/mps, Intel-Mac MPS 회피)
+├── errors.py               # 사용자용 에러 타입 + 종료 코드
+├── logging_utils.py        # stage/step 로깅 헬퍼
+├── separation/
+│   ├── base.py             # ★ Separator 프로토콜 + ModelInfo 데이터클래스
+│   ├── registry.py         # ★ 모델 카탈로그(STEM_MODELS/DRUM_MODELS) + resolve/loader
+│   ├── download.py         # 가중치 다운로드/캐시 공용 헬퍼 (URL/gdrive)
+│   ├── stems.py            # Demucs 백엔드 (htdemucs_6s / htdemucs_ft)
+│   ├── roformer.py         # RoFormer 백엔드 + 청크 추론 엔진(_demix)
+│   ├── drums.py            # LarsNet 백엔드
+│   └── drumsep.py          # DrumSep(inagoy, Hybrid Demucs) 백엔드
+└── vendor/
+    ├── larsnet/            # 벤더링한 LarsNet 모델 코드
+    └── roformer/           # 벤더링한 BS/Mel-Band RoFormer (ZFTurbo v1.0.12, MIT)
+        └── configs/        # 체크포인트에 묶인 모델 config(YAML) 동봉
+```
+
+★ = 모델 선택 기능의 핵심.
+
+---
+
+## 3. 핵심 설계 — 레지스트리 + 어댑터 / Registry + adapter
+
+### 3.1 `Separator` 프로토콜과 `ModelInfo` (`base.py`)
+
+모든 백엔드는 동일한 최소 인터페이스를 따릅니다.
+
+```python
+class Separator(Protocol):
+    info: ModelInfo
+    def separate(self, wav, input_sr, *, progress=True) -> dict[str, Tensor]: ...
+        # {stem_name: (channels, samples)}  @ info.samplerate
+```
+
+모델의 정적 메타데이터는 불변 데이터클래스로 표현합니다.
+
+```python
+@dataclass(frozen=True)
+class ModelInfo:
+    id: str                       # CLI 값 (예: "bs_roformer")
+    kind: str                     # "stem" | "drum"
+    display: str                  # 로그/목록 표기
+    output_stems: tuple[str, ...] # 이 모델이 내는 스템/조각 (권위 있는 출처)
+    samplerate: int
+    load: Loader                  # (info, device, **opts) -> Separator
+    channels: int = 2
+    license_note: str = ""
+```
+
+`output_stems`가 **모델별로** 다르다는 점이 설계의 중심입니다(htdemucs_6s만
+6스템, RoFormer는 4 또는 2스템). 그래서:
+
+- `cli.parse_stems(value, allowed)` — 선택한 모델의 `output_stems` 기준으로
+  `--stems`를 검증(예: `bs_roformer`에 `guitar` 요청 → 거부).
+- `pipeline.planned_outputs` — 선택한 드럼 모델의 `output_stems`로 결과 파일 계획.
+- `pipeline.run` — 오디오를 `info.samplerate`/`info.channels`로 로딩(모델 인스턴스
+  생성 전에 결정 가능).
+
+### 3.2 레지스트리 (`registry.py`)
+
+`STEM_MODELS` / `DRUM_MODELS` 딕셔너리가 카탈로그이며, **로더는 백엔드를 지연
+import**합니다. 덕분에 `--list-models`나 CLI choices 구성은 무거운 스택(torch 등)을
+불러오지 않습니다.
+
+```python
+def _roformer_loader(*, model_type, config_name, ckpt_url, ckpt_name):
+    def load(info, device, **kw):
+        from .roformer import RoformerSeparator      # ← 지연 import
+        return RoformerSeparator(info, device, model_type=model_type, ...)
+    return load
+```
+
+`resolve_stem(id)` / `resolve_drum(id)`는 미존재 시 가용 목록을 담은
+`ModelError`를 던집니다. `format_table()`은 `--list-models` 출력.
+
+### 3.3 모델별 지식(knobs)은 생성자에서
+
+각 단계 공통 호출은 `separate(wav, input_sr, progress=)`로 균일하게 두고,
+모델 고유 옵션은 **로더/생성자**로 전달합니다.
+
+- stem: `load(info, device, shifts=…)`  (Demucs만 사용, RoFormer는 무시)
+- drum: `load(info, device, wiener_exponent=…, verbose=…)` (LarsNet 전용,
+  나머지는 무시 — CLI가 비-LarsNet에서 `--drum-wiener` 사용 시 1회 경고)
+
+---
+
+## 4. 2단계 파이프라인 흐름 / Pipeline flow (`pipeline.py`)
+
+```python
+stem_info = registry.resolve_stem(opts.stem_model)
+drum_info = registry.resolve_drum(opts.drum_model) if will_split else None
+
+separator = stem_info.load(stem_info, device, shifts=opts.shifts)   # 가중치 로드/다운로드
+wav       = audio.load_track(input, stem_info.channels, stem_info.samplerate)
+sources   = separator.separate(wav, stem_info.samplerate)           # {name: tensor}
+# opts.stems 에 해당하는 스템만 저장. drums는 분리 시 stage 2로.
+
+if drum_info:
+    drum_sep = drum_info.load(drum_info, device, wiener_exponent=…)
+    pieces   = drum_sep.separate(sources["drums"], stem_info.samplerate)
+    # drum_info.output_stems 순서로 저장 (drum_info.samplerate)
+```
+
+- 드럼 세부 분리는 **stem 모델이 `drums`를 내고 사용자가 `drums`를 선택**할 때만
+  수행됩니다. `mel_band_roformer`(보컬/반주 2스템)는 `drums`가 없으므로 자동으로
+  꺼집니다.
+- 모든 출력이 이미 존재하면(`planned_outputs`) `--overwrite` 없이는 건너뜁니다.
+
+---
+
+## 5. 가중치 다운로드 & 캐시 / Weights & cache (`download.py`)
+
+캐시 위치는 `BANDPREPARE_CACHE` → `XDG_CACHE_HOME` → `~/.cache` 순으로 결정되며
+`<cache>/bandprepare/<모델>/` 아래에 저장됩니다.
+
+| 모델 | 받는 것 | 방식 | 캐시 경로 |
+|------|---------|------|-----------|
+| Demucs (htdemucs_*) | Demucs 가중치 | demucs 내장 | `~/.cache/torch` |
+| LarsNet | 5개 체크포인트(zip, ~562MB) | gdown | `~/.cache/bandprepare/larsnet` |
+| DrumSep | `49469ca8.th`(~167MB) | gdown | `~/.cache/bandprepare/drumsep` |
+| RoFormer | `.ckpt`(~500–870MB) | urllib(GitHub/HF) | `~/.cache/bandprepare/roformer` |
+
+공용 헬퍼: `model_cache_dir(name)`, `download_url(url, dest, …)`,
+`download_gdrive(file_id, dest, …)` — 모두 멱등(이미 받았으면 재사용)·부분
+다운로드 방지.
+
+---
+
+## 6. 벤더링한 모델 코드 / Vendored models
+
+순수 파이썬 모델 정의는 저장소에 직접 포함합니다.
+
+- **LarsNet** (`vendor/larsnet/`) — 코드 MIT, **사전학습 체크포인트는 CC BY-NC 4.0
+  (비상업)**. 상업적 사용 시 주의(README 라이선스 메모 참고).
+- **RoFormer** (`vendor/roformer/`) — `bs_roformer.py`, `mel_band_roformer.py`,
+  `attend.py`를 [ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+  **태그 `v1.0.12`** 에서 복사(내부 import만 상대 경로로 수정). lucidrains 구현
+  기반, MIT.
+
+> **왜 태그 고정인가**: 모델 코드와 사전학습 체크포인트의 `state_dict` 키가 맞아야
+> 합니다. pip의 `BS-RoFormer` 최신 패키지는 아키텍처가 드리프트(hyper-connections,
+> PoPE 등)해 공개 체크포인트 로딩이 깨질 수 있습니다. 그래서 패키지 의존 대신,
+> 체크포인트(v1.0.12 릴리스 자산)와 **같은 버전의 모델 코드**를 벤더링합니다.
+
+체크포인트에 묶인 **config(YAML)도 패키지에 동봉**(`vendor/roformer/configs/`)해
+런타임엔 대용량 `.ckpt`만 받습니다. config는 신뢰된 동봉 파일이므로
+`yaml.load(Loader=yaml.Loader)`로 `!!python/tuple` 태그를 처리합니다.
+
+### Mel-Band가 2스템인 이유
+
+공개 Mel-Band RoFormer 체크포인트는 전부 보컬 분리(2스템: vocals/instrumental) 등
+특수 목적이고, 4스템 범용 가중치는 공개돼 있지 않습니다. 그래서 Mel-Band는
+**보컬/반주 추출기**(KimberleyJensen, SDR vocals 10.98)로 등록하고, 반주(`other`)는
+`mix − vocals`로 계산합니다(`RoformerSeparator._add_complement`). BS-RoFormer는
+4스템(vocals/drums/bass/other) 가중치가 있어 그대로 4스템 모델입니다.
+
+---
+
+## 7. 공유 추론 엔진 / Shared inference (`roformer._demix`)
+
+RoFormer는 ZFTurbo `demix_track`을 옮긴 **청크-오버랩 추론**을 씁니다.
+
+- `chunk_size`만큼 잘라 `num_overlap` 간격으로 처리, 경계는 크로스페이드 윈도로
+  합성(클릭 잡음 완화).
+- 입력은 모델 SR로 리샘플, 출력은 `{instrument: (channels, samples)}`.
+- AMP는 CUDA에서만 활성. (벤더 모델은 MPS의 STFT/ISTFT 미지원을 내부에서 CPU로
+  폴백 처리.)
+
+이 엔진은 아키텍처에 무관하게 `(B,C,T) → (B,S,C,T)` 모델이면 재사용 가능합니다
+(향후 MDX23C 드럼 모델도 동일 엔진을 쓰도록 설계).
+
+---
+
+## 8. 장치 처리 / Devices (`device.py`)
+
+`auto`는 CUDA → (Apple Silicon)MPS → CPU 순으로 선택합니다. **Intel Mac**에서는
+MPS가 "사용 가능"으로 보고돼도 이 모델들엔 느리거나 멈춰서, `auto`가 의도적으로
+CPU를 고릅니다(`--device mps`로 강제 가능). LarsNet은 MPS 실패 시 CPU로 자동 폴백.
+
+---
+
+## 9. 호환성 — audio-separator를 쓰지 않은 이유 / Why not audio-separator
+
+모델 선택을 가장 쉽게 구현하는 방법은 [`audio-separator`](https://github.com/nomadkaraoke/python-audio-separator)
+같은 통합 래퍼를 쓰는 것이지만, **의도적으로 채택하지 않았습니다.**
+
+### 충돌 지점
+
+| | BandPrepare(고정) | audio-separator(요구) |
+|---|---|---|
+| torch | `>=2.1, <2.3` | **`>=2.3`** |
+| numpy | `<2` | **`>=2`** |
+
+`torch<2.3` 핀은 임의가 아니라 **플랫폼 제약**입니다.
+
+- PyTorch는 **2.2.2 이후 Intel(x86_64) macOS 휠을 제공하지 않습니다**(소스 빌드만).
+- BandPrepare의 주 개발 머신이 **Intel Mac(x86_64)** 입니다.
+- 따라서 `torch>=2.3`으로 올리면 → 이 머신에 prebuilt 휠이 없어 → **프로젝트가
+  동작하지 않습니다.** audio-separator는 `torch>=2.3 / numpy>=2`를 요구하므로
+  채택 시 곧장 이 회귀가 발생합니다.
+
+### 대신 택한 방식 — 어댑터 패턴
+
+RoFormer·Demucs·DrumSep 등 **아키텍처 자체는 torch 2.2에서 잘 돕니다**(2.3을
+*필요로* 하지 않음). 그래서 통합 래퍼 대신 각 모델을 **직접 로딩**합니다.
+
+- Demucs: `demucs` 패키지 그대로.
+- RoFormer: 모델 코드 벤더링(§6) + 체크포인트 직접 다운로드 + 자체 추론(§7).
+- DrumSep: `demucs`의 커스텀 repo 로딩(`get_model(sig, repo=…)`).
+
+**트레이드오프**: 모델당 약간의 글루 코드가 늘지만, torch 버전을 우리가 통제하고
+플랫폼(특히 Intel-Mac) 지원을 잃지 않습니다.
+
+### 같은 결의 추가 핀 — numba/llvmlite
+
+Mel-Band RoFormer가 의존하는 `librosa → numba → llvmlite`도 최신 릴리스가
+x86_64 macOS 휠을 끊었습니다(소스 빌드 실패). 그래서 `roformer` extra에서
+`numba<0.61`, `llvmlite<0.44`로 상한을 둬 Intel-Mac에서 설치되게 합니다. 이
+의존성들은 RoFormer를 쓸 때만 필요하므로 **선택적 extra `.[roformer]`** 로 분리해
+기본 설치를 가볍고 안전하게 유지합니다.
+
+### 플랫폼 지원 요약
+
+| OS / 아키텍처 | 상태 |
+|---|---|
+| macOS Intel (x86_64) | ✅ torch 2.2.2 (주 개발 환경) |
+| macOS Apple Silicon | ✅ (MPS 가속) |
+| Linux x86_64 / aarch64 | ✅ (CUDA/CPU) |
+| Windows x86_64 | ✅ (CUDA/CPU) |
+
+---
+
+## 10. 새 모델 추가하기 / Adding a model
+
+1. 백엔드 작성: `separation/<name>.py`에 `Separator` 프로토콜을 만족하는 클래스
+   (`info`, `separate(wav, input_sr, *, progress)`).
+2. 가중치 다운로드는 `download.py` 헬퍼 재사용. 큰 가중치만 런타임 다운로드,
+   작은 config는 동봉 권장.
+3. `registry.py`에 로더(지연 import) + `ModelInfo` 항목 추가
+   (`output_stems`/`samplerate`/`license_note` 정확히 기입).
+4. 끝 — CLI choices·`--list-models`·`--stems` 검증·파이프라인이 자동 반영됩니다.
+5. `tests/test_unit.py`에 레지스트리/스템 검증 테스트 추가, 실제 분리는 샘플로 E2E.
+
+> 예: 보류된 **MDX23C 6스템 드럼**(crash/ride 분리)은 §7 추론 엔진을 재사용하고
+> MDX23C(TFC-TDF v3) 모델 코드만 추가 벤더링하면 됩니다.
+
+---
+
+## 11. 테스트 / Testing
+
+- `pytest -q` — 모델 가중치 없이 도는 빠른 단위 테스트(인자 파싱, 모델별 스템
+  검증, 레지스트리 해석, 출력 경로 계획, 장치 해석).
+- 실제 분리(가중치 다운로드·CPU 추론)는 `tests/make_sample.py`로 만든 합성 클립에
+  대해 수동 E2E로 확인합니다(README "동작 확인" 참고).

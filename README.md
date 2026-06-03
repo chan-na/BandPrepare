@@ -80,6 +80,17 @@ bandprepare --version
 > 📌 새 터미널을 열 때마다 `source .venv/bin/activate` 를 먼저 실행해야
 > `bandprepare` 명령을 쓸 수 있습니다. (또는 `.venv/bin/bandprepare` 처럼 전체 경로 사용)
 
+#### (선택) RoFormer 모델 쓰려면
+
+`bs_roformer` / `mel_band_roformer` 를 쓸 때만 추가 의존성이 필요합니다(기본 설치엔 불포함):
+
+```bash
+uv pip install -e ".[roformer]"     # 또는: pip install -e ".[roformer]"
+```
+
+> 아키텍처와 설계 배경(특히 호환성 때문에 audio-separator를 쓰지 않은 이유)은
+> [ARCHITECTURE.md](ARCHITECTURE.md) 를 참고하세요.
+
 ---
 
 ## STEP 3. 곡 분리하기 (첫 실행)
@@ -425,6 +436,9 @@ pytest -q                      # 모델 없이 도는 빠른 단위 테스트
 출력 경로 계획, 장치 해석, 샘플 생성 등). 실제 분리는 위 "동작 확인" 절차로 수행합니다.
 
 ### 구조
+
+자세한 설계·데이터 흐름·설계 결정(특히 호환성 때문에 audio-separator 미사용)은
+[ARCHITECTURE.md](ARCHITECTURE.md) 참고.
 
 ```
 src/bandprepare/
