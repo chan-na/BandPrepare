@@ -26,6 +26,8 @@ BandPrepare는 음원 한 곡을 **2단계**로 분리하는 CLI입니다.
 └───────────────┬──────────────────────────────────────────────┘
                 ▼
    output/<곡>/instruments/*.wav,  output/<곡>/drums/*.wav
+
+   (선택) --minus: 원본 믹스 − Σ(선택 스템) → output/<곡>/mixes/minus-*.wav
 ```
 
 두 단계 모두 **여러 모델 중 선택**할 수 있고, 각 모델은 동일한 `Separator`
@@ -39,7 +41,7 @@ BandPrepare는 음원 한 곡을 **2단계**로 분리하는 CLI입니다.
 ```
 src/bandprepare/
 ├── cli.py                  # 인자 파싱, --list-models, 모델별 --stems 검증, 진입점
-├── pipeline.py             # 2단계 오케스트레이션 (Options, run, planned_outputs)
+├── pipeline.py             # 2단계 오케스트레이션 (Options, run, planned_outputs, compute_minus)
 ├── audio.py                # 입출력 / ffmpeg 점검 (load_track, save_waveform)
 ├── device.py               # --device 해석 (auto/cpu/cuda/mps, Intel-Mac MPS 회피)
 ├── errors.py               # 사용자용 에러 타입 + 종료 코드
@@ -141,6 +143,10 @@ wav       = audio.load_track(input, stem_info.channels, stem_info.samplerate)
 sources   = separator.separate(wav, stem_info.samplerate)           # {name: tensor}
 # opts.stems 에 해당하는 스템만 저장. drums는 분리 시 stage 2로.
 
+if opts.minus:                                                       # 마이너스원(play-along)
+    mixdown = compute_minus(wav, sources, opts.minus)               # mix − Σ(선택 스템)
+    audio.save_waveform(mixdown, …/mixes/minus-….wav, stem_info.samplerate)
+
 if drum_info:
     drum_sep = drum_info.load(drum_info, device, wiener_exponent=…)
     pieces   = drum_sep.separate(sources["drums"], stem_info.samplerate)
@@ -150,6 +156,10 @@ if drum_info:
 - 드럼 세부 분리는 **stem 모델이 `drums`를 내고 사용자가 `drums`를 선택**할 때만
   수행됩니다. `mel_band_roformer`(보컬/반주 2스템)는 `drums`가 없으므로 자동으로
   꺼집니다.
+- `--minus` 는 **메모리에 살아 있는 원본 믹스(`wav`)와 전체 `sources`** 로 합본을
+  만듭니다. `--stems`(개별 스템 저장)와 독립적이라 저장하지 않은 스템도 뺄 수 있고,
+  길이는 `compute_minus` 가 최단 텐서에 맞춰 정합합니다(RoFormer 등 약간의 트리밍 대비).
+  드럼 조각(킥/스네어 등) 단위 마이너스는 SR 차이/드럼 분리 선행 문제로 아직 미지원.
 - 모든 출력이 이미 존재하면(`planned_outputs`) `--overwrite` 없이는 건너뜁니다.
 
 ---

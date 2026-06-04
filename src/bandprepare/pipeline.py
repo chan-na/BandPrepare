@@ -5,14 +5,41 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import audio
 from .device import resolve_device
 from .logging_utils import get_logger, stage, step
 from .separation import registry
 
+if TYPE_CHECKING:
+    import torch
+
 INSTRUMENT_SUBDIR = "instruments"
 DRUMS_SUBDIR = "drums"
+MIXES_SUBDIR = "mixes"
+
+
+def _minus_filename(names: list[str], ext: str) -> str:
+    """File name for a mix-minus output, e.g. ``minus-vocals-bass.wav``."""
+    return f"minus-{'-'.join(names)}.{ext}"
+
+
+def compute_minus(
+    mix: torch.Tensor, sources: dict[str, torch.Tensor], names: list[str]
+) -> torch.Tensor:
+    """Return ``mix − Σ sources[name]`` — the full mix with ``names`` removed.
+
+    All tensors must share sample-rate and channel count, which holds for stage-1
+    stems (they come back at the mix's SR/channels). Lengths are reconciled to the
+    shortest tensor because some backends (e.g. RoFormer) trim a few samples.
+    """
+    lengths = [mix.shape[-1]] + [sources[n].shape[-1] for n in names]
+    length = min(lengths)
+    out = mix[..., :length].clone()
+    for n in names:
+        out = out - sources[n][..., :length]
+    return out
 
 
 @dataclass
@@ -30,6 +57,7 @@ class Options:
     overwrite: bool = False
     verbose: bool = False
     shifts: int = 1
+    minus: list[str] = field(default_factory=list)
     # Filled in during run():
     resolved_device: str = field(default="", init=False)
 
@@ -58,6 +86,9 @@ def planned_outputs(opts: Options) -> list[Path]:
                 files.append(drm / f"{piece}.{ext}")
         else:
             files.append(instr / f"drums.{ext}")
+
+    if opts.minus:
+        files.append(opts.output_dir / MIXES_SUBDIR / _minus_filename(opts.minus, ext))
     return files
 
 
@@ -95,6 +126,8 @@ def run(opts: Options) -> int:
     logger.info("장치 / device     : %s", opts.resolved_device)
     logger.info("포맷 / format     : %s", opts.fmt)
     logger.info("스템 / stems      : %s", ", ".join(opts.stems))
+    if opts.minus:
+        logger.info("마이너스 / minus  : %s", ", ".join(opts.minus))
     logger.info("악기모델/stem-model: %s", stem_info.display)
     logger.info("드럼분리/drum-split: %s", "on" if do_split else "off")
     if do_split:
@@ -125,6 +158,22 @@ def run(opts: Options) -> int:
         audio.save_waveform(tensor, out_path, stem_info.samplerate, opts.fmt)
         written.append(out_path)
         step(logger, f"저장 / saved: {out_path}")
+
+    # ---- Mix-minus (play-along) ----------------------------------------
+    # mix − Σ(selected stems): the standard karaoke/minus-one recipe. Built from
+    # the in-memory mix + all stage-1 sources, so it works for any stem even when
+    # that stem was not selected via --stems.
+    if opts.minus:
+        if set(opts.minus) >= set(stem_info.output_stems):
+            logger.warning(
+                "  ! --minus 가 모든 스템을 제거합니다 — 결과가 거의 무음일 수 있습니다 / "
+                "--minus removes every stem; the result may be near-silent."
+            )
+        mixdown = compute_minus(wav, sources, opts.minus)
+        out_path = opts.output_dir / MIXES_SUBDIR / _minus_filename(opts.minus, opts.fmt)
+        audio.save_waveform(mixdown, out_path, stem_info.samplerate, opts.fmt)
+        written.append(out_path)
+        step(logger, f"마이너스원 저장 / saved mix-minus: {out_path}")
 
     # ---- Stage 2: drum-kit separation ----------------------------------
     if do_split:

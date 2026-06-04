@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  bandprepare song.mp3\n"
             "  bandprepare song.wav -o out/ --format flac\n"
             "  bandprepare song.mp3 --stems vocals,drums,bass\n"
+            "  bandprepare song.mp3 --minus bass        # 베이스 뺀 합본 / play-along\n"
             "  bandprepare song.mp3 --stem-model htdemucs_ft --no-drum-split\n"
             "  bandprepare song.mp3 --drum-model drumsep\n"
             "  bandprepare --list-models\n"
@@ -52,6 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="분리할 악기 (콤마 구분, 기본 all) / stems to keep, comma-separated. "
                              "선택지는 --stem-model 에 따라 다름 / choices depend on --stem-model "
                              "(see --list-models)")
+    parser.add_argument("--minus", type=str, default=None, metavar="STEM[,STEM...]",
+                        help="해당 악기를 뺀 합본(마이너스원) 생성 / mix minus the given stem(s), "
+                             "comma-separated (e.g. --minus vocals or --minus vocals,bass)")
     parser.add_argument("--no-drum-split", action="store_true",
                         help="드럼 세부 분리를 건너뜀 / skip drum-kit separation")
     parser.add_argument("--format", dest="fmt", choices=SUPPORTED_FORMATS, default="wav",
@@ -115,6 +119,23 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))  # exits with code 2
         return EXIT_USAGE  # unreachable, for type-checkers
 
+    # --minus is validated against the same model's stems, but independently of
+    # --stems: the mix-minus is built from all stage-1 sources regardless of
+    # which stems are saved.
+    minus: list[str] = []
+    if args.minus:
+        allowed = set(stem_info.output_stems)
+        requested = [s.strip().lower() for s in args.minus.split(",") if s.strip()]
+        unknown = [s for s in requested if s not in allowed]
+        if unknown:
+            parser.error(
+                f"--minus: 이 모델에 없는 스템 {', '.join(unknown)} / "
+                f"unknown stems for this model. choices: {', '.join(stem_info.output_stems)}"
+            )
+            return EXIT_USAGE  # unreachable, for type-checkers
+        # de-duplicate while preserving the model's canonical order
+        minus = [s for s in stem_info.output_stems if s in requested]
+
     # Wiener filtering is a LarsNet-specific knob; warn (don't fail) if the user
     # set it while a different drum model is selected.
     wiener_explicit = args.no_drum_wiener or args.drum_wiener is not None
@@ -146,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         wiener_exponent=wiener,
         overwrite=args.overwrite,
         verbose=args.verbose,
+        minus=minus,
     )
 
     try:

@@ -150,17 +150,28 @@ output/내곡/
 
 ### 🎶 내 파트만 빼고 듣기 (마이너스원 백킹 트랙)
 
-가장 쉬운 방법은 **음악 플레이어/DAW에 모든 트랙을 올리고 내 파트만 음소거**하는 것입니다.
-
-조금 더 손쉽게 하나의 파일로 합치고 싶다면 ffmpeg로 섞을 수 있습니다.
-먼저 드럼을 통째로 받도록 `--no-drum-split` 으로 분리해 두세요(그러면 `instruments/`
-안에 `drums.wav` 도 생깁니다):
+`--minus` 한 번이면 **선택한 악기를 뺀 합본 파일**이 바로 만들어집니다. "내 파트 빼고
+들으면서 같이 연주"하는 용도예요. 결과는 `output/<곡>/mixes/` 폴더에 생깁니다.
 
 ```bash
-bandprepare 내곡.mp3 --no-drum-split
+# 베이스 뺀 합본 (베이시스트 연습용)
+bandprepare 내곡.mp3 --minus bass        # → mixes/minus-bass.wav
+
+# 보컬 뺀 MR
+bandprepare 내곡.mp3 --minus vocals      # → mixes/minus-vocals.wav
+
+# 보컬·베이스 둘 다 빼기 (콤마로 여러 개)
+bandprepare 내곡.mp3 --minus vocals,bass # → mixes/minus-vocals-bass.wav
 ```
 
-예) **기타리스트가 기타만 뺀 백킹** 만들기 (기타를 뺀 나머지 5개를 합침):
+> ℹ️ 계산 방식은 `원본 믹스 − 선택 스템들의 합`이라 잔향/잔여가 남아 자연스럽습니다
+> (카라오케/마이너스원의 표준 방식). 선택할 수 있는 악기는 `--stem-model` 에 따라 다르며,
+> `--stems` 와는 독립입니다(개별 스템 저장 여부와 상관없이 항상 만들 수 있음).
+> 빼는 악기는 1단계 스템 단위입니다(킥/스네어 같은 드럼 조각 단위는 아직 미지원).
+
+**대안 — DAW/플레이어에서 직접**: 모든 트랙을 올리고 내 파트만 음소거해도 됩니다.
+ffmpeg로 수동으로 합치고 싶다면, 드럼을 통째로 받도록 `--no-drum-split` 으로 분리한 뒤
+(그러면 `instruments/drums.wav` 도 생김) 원하는 트랙만 섞으면 됩니다:
 
 ```bash
 cd output/내곡/instruments
@@ -290,6 +301,7 @@ bandprepare <input_audio> [options]
   --drum-model NAME             드럼 세부 분리 모델 (기본: larsnet). --list-models 참고
   --list-models                 사용 가능한 모델 목록 출력 후 종료
   --stems LIST                  분리할 악기 선택 (기본: all, 선택지는 모델별로 다름)
+  --minus STEM[,STEM...]        해당 악기를 뺀 합본(마이너스원) 생성 → mixes/minus-*.<fmt>
   --no-drum-split               드럼 세부 분리 단계를 건너뜀
   --format {wav,mp3,flac}       출력 포맷 (기본: wav)
   --device {auto,cpu,cuda,mps}  연산 장치 (기본: auto)
@@ -326,12 +338,15 @@ output/<곡이름>/
 ├── instruments/
 │   ├── vocals.wav  bass.wav  guitar.wav  piano.wav  other.wav
 │   └── drums.wav            # --keep-drums-stem 또는 --no-drum-split 시
-└── drums/
-    └── kick.wav  snare.wav  hihat.wav  cymbals.wav(크래쉬+라이드)  toms.wav
+├── drums/
+│   └── kick.wav  snare.wav  hihat.wav  cymbals.wav(크래쉬+라이드)  toms.wav
+└── mixes/                     # --minus 사용 시에만
+    └── minus-<악기>.wav        # 예: minus-bass.wav, minus-vocals-bass.wav
 ```
 
 `--stems` 로 일부만 선택하면 해당 파일만 생성됩니다. `drums` 를 선택하지 않으면
-드럼 세부 분리도 수행하지 않습니다.
+드럼 세부 분리도 수행하지 않습니다. `--minus` 는 이와 독립으로 동작해
+`mixes/` 에 마이너스원 합본을 추가로 만듭니다(`원본 믹스 − 선택 스템`).
 
 > **플랫폼 메모**: `torch`/`torchaudio`는 `<2.3`으로 고정. Intel(x86_64) macOS용
 > PyTorch 휠은 2.2.2가 마지막이기 때문입니다. Linux·Apple Silicon에서도 정상 설치됩니다.

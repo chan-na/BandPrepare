@@ -172,6 +172,51 @@ def test_planned_outputs_subset_no_drums():
     assert names == {"out/instruments/vocals.wav", "out/instruments/bass.wav"}
 
 
+def test_planned_outputs_includes_minus():
+    files = planned_outputs(_opts(minus=["bass"]))
+    names = {p.as_posix() for p in files}
+    assert "out/mixes/minus-bass.wav" in names
+
+
+def test_planned_outputs_minus_multiple():
+    files = planned_outputs(_opts(minus=["vocals", "bass"]))
+    names = {p.as_posix() for p in files}
+    assert "out/mixes/minus-vocals-bass.wav" in names
+
+
+def test_compute_minus_subtracts_and_aligns_length():
+    import torch
+
+    from bandprepare.pipeline import compute_minus
+
+    mix = torch.ones(2, 100)
+    sources = {
+        "vocals": torch.full((2, 100), 0.5),
+        "bass": torch.full((2, 98), 0.25),  # shorter — exercises length alignment
+    }
+    out = compute_minus(mix, sources, ["vocals", "bass"])
+    assert out.shape == (2, 98)  # trimmed to the shortest input
+    assert torch.allclose(out, torch.full((2, 98), 0.25))
+
+
+def test_compute_minus_does_not_mutate_mix():
+    import torch
+
+    from bandprepare.pipeline import compute_minus
+
+    mix = torch.ones(2, 50)
+    compute_minus(mix, {"bass": torch.ones(2, 50)}, ["bass"])
+    assert torch.allclose(mix, torch.ones(2, 50))  # mix untouched
+
+
+def test_cli_minus_unknown_stem_exits():
+    from bandprepare.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["song.mp3", "--minus", "kazoo"])
+    assert exc.value.code == 2
+
+
 def _patch_device(monkeypatch, *, cuda, mps, apple_silicon):
     monkeypatch.setattr(device_mod, "_cuda_ok", lambda: cuda)
     monkeypatch.setattr(device_mod, "_mps_ok", lambda: mps)
