@@ -77,11 +77,12 @@ def _getWindowingArray(window_size: int, fade_size: int):
 
 
 def _demix(cfg: dict, model, mix: "torch.Tensor", device: str,
-           progress: bool = True) -> dict[str, "torch.Tensor"]:
+           progress: bool = True, desc: str = "separating") -> dict[str, "torch.Tensor"]:
     """Chunked-overlap inference. Port of ZFTurbo ``demix_track``.
 
     ``mix`` is ``(channels, samples)`` float32 at the model's sample rate.
-    Returns ``{instrument: (channels, samples)}``.
+    Returns ``{instrument: (channels, samples)}``. Shared by the RoFormer stem
+    backend and the MDX23C drum backend (``desc`` only labels the progress bar).
     """
     import torch
     import torch.nn.functional as F
@@ -120,7 +121,7 @@ def _demix(cfg: dict, model, mix: "torch.Tensor", device: str,
                 try:
                     from tqdm import tqdm
 
-                    pbar = tqdm(total=total, desc="roformer", leave=False)
+                    pbar = tqdm(total=total, desc=desc, leave=False)
                 except Exception:
                     pbar = None
 
@@ -215,7 +216,8 @@ class RoformerSeparator:
             get_logger().debug("resampling %d -> %d for RoFormer", input_sr, sr)
             wav = ta.functional.resample(wav, input_sr, sr)
         try:
-            pieces = _demix(self._cfg, self._model, wav, self._device, progress=progress)
+            pieces = _demix(self._cfg, self._model, wav, self._device,
+                            progress=progress, desc="roformer")
         except (NotImplementedError, RuntimeError) as exc:
             raise SeparationError(
                 f"악기 분리 실패 / RoFormer separation failed: {exc}"

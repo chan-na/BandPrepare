@@ -12,6 +12,7 @@ from ..errors import ModelError
 from .base import ModelInfo
 from .drums import DRUM_STEMS, LARSNET_SR
 from .drumsep import DRUMSEP_SR, DRUMSEP_STEMS
+from .mdx23c import MDX23C_DRUM_STEMS, MDX23C_SR
 from .stems import STEM_ORDER, STEM_ORDER_4
 
 DEFAULT_STEM_MODEL = "htdemucs_6s"
@@ -51,6 +52,15 @@ def _drumsep_loader():
         from .drumsep import DrumSepSeparator
 
         return DrumSepSeparator(info, device, verbose=kw.get("verbose", False))
+
+    return load
+
+
+def _mdx23c_loader():
+    def load(info: ModelInfo, device: str, **kw):
+        from .mdx23c import MDX23CSeparator
+
+        return MDX23CSeparator(info, device, verbose=kw.get("verbose", False))
 
     return load
 
@@ -141,6 +151,15 @@ DRUM_MODELS: dict[str, ModelInfo] = {
         samplerate=DRUMSEP_SR,
         load=_drumsep_loader(),
         license_note="MIT (code) · 모델은 저자 논문 기반 / research model",
+    ),
+    "mdx23c": ModelInfo(
+        id="mdx23c",
+        kind="drum",
+        display="MDX23C DrumSep (aufr33/jarredou, 6 pieces, +ride/crash)",
+        output_stems=MDX23C_DRUM_STEMS,
+        samplerate=MDX23C_SR,
+        load=_mdx23c_loader(),
+        license_note="MIT (code) · 체크포인트 aufr33 & jarredou / model weights by aufr33 & jarredou",
     ),
 }
 

@@ -79,7 +79,37 @@ def test_registry_has_added_models():
     assert registry.resolve_stem("bs_roformer").output_stems == ("vocals", "drums", "bass", "other")
     # Mel-Band is a 2-stem vocals/instrumental model (no drums) → drum-split off.
     assert registry.resolve_stem("mel_band_roformer").output_stems == ("vocals", "other")
+    assert set(registry.drum_model_ids()) >= {"larsnet", "drumsep", "mdx23c"}
     assert registry.resolve_drum("drumsep").output_stems == ("kick", "snare", "toms", "cymbals")
+
+
+def test_registry_mdx23c_drum_model():
+    info = registry.resolve_drum("mdx23c")
+    assert info.kind == "drum"
+    assert info.samplerate == 44100
+    assert info.output_stems == ("kick", "snare", "toms", "hihat", "ride", "crash")
+    # MDX23C is the only drum model that splits cymbals into separate ride/crash.
+    assert "ride" in info.output_stems and "crash" in info.output_stems
+
+
+def test_mdx23c_model_builds_from_bundled_config():
+    # Validates the vendored TFC-TDF v3 code + bundled config still construct and
+    # emit (B, stems, channels, samples) — the contract _demix relies on. Needs
+    # torch but no downloaded weights, so it stays a "fast" test where torch exists.
+    pytest.importorskip("torch")
+    import torch
+
+    from bandprepare.separation.mdx23c import _DotConfig, _load_config
+    from bandprepare.vendor.mdx23c import TFC_TDF_net
+
+    cfg = _load_config()
+    assert cfg["training"]["instruments"] == ["kick", "snare", "toms", "hh", "ride", "crash"]
+    model = TFC_TDF_net(_DotConfig(cfg)).eval()
+    assert model.num_target_instruments == 6
+    chunk = int(cfg["audio"]["chunk_size"])
+    with torch.inference_mode():
+        out = model(torch.zeros(1, cfg["audio"]["num_channels"], chunk))
+    assert tuple(out.shape) == (1, 6, 2, chunk)
 
 
 def test_parse_stems_4stem_model_rejects_guitar():
@@ -112,6 +142,15 @@ def test_planned_outputs_full_with_drum_split():
     assert "out/instruments/drums.wav" not in names
     for piece in DRUM_STEMS:
         assert f"out/drums/{piece}.wav" in names
+
+
+def test_planned_outputs_mdx23c_six_pieces():
+    files = planned_outputs(_opts(drum_model="mdx23c"))
+    names = {p.as_posix() for p in files}
+    for piece in ("kick", "snare", "toms", "hihat", "ride", "crash"):
+        assert f"out/drums/{piece}.wav" in names
+    # drums stem is consumed by stage 2, not kept by default
+    assert "out/instruments/drums.wav" not in names
 
 
 def test_planned_outputs_keep_drums_stem():
