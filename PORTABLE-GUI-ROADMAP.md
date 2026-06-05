@@ -127,12 +127,22 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - **알려진 한계(PoC)**: GUI 드롭다운에 RoFormer 스템 모델이 보이지만 이 번들에선 선택 시
   친절한 에러(`pip install bandprepare[roformer]`)로 degrade. RoFormer 동봉은 Phase 5.
 
-### Phase 5 — (이후) 멀티플랫폼 / 서명 / RoFormer
-- [ ] GitHub Actions 빌드 매트릭스 (mac x86_64, mac arm64, Linux x86_64, Win x86_64)
-      — universal2는 torch 때문에 비권장, arm64 별도 빌드
-- [ ] macOS 코드사인 + 공증 / Windows 코드사인 (유료 인증서 필요)
-- [ ] RoFormer(`numba`/`llvmlite`) 동봉 검증 → 별도/확장 번들로 추가
-- [ ] 배포 채널 결정 (GitHub Releases / 기타)
+### Phase 5 — (이후) 멀티플랫폼 / 서명 / RoFormer  ◐ 부분
+- [x] GitHub Actions 빌드 매트릭스 **스캐폴드** (`.github/workflows/build.yml`):
+      macos-13(x86_64)/macos-14(arm64)/ubuntu/windows, 각 OS에서 테스트 → `pyinstaller
+      bandprepare.spec` 빌드 → **동결 self-test** → 아티팩트 업로드. universal2 대신 arch별
+      별도 빌드(D7). ⚠️ **CI 첫 실행으로 검증 필요**(로컬에서 실행 불가). Linux는 Qt 런타임
+      libs(apt) 설치 스텝 포함.
+- [ ] macOS 코드사인 + 공증 / Windows 코드사인 — **유료 인증서 필요**(워크플로에 주석
+      플레이스홀더만). 미서명 시 Gatekeeper/SmartScreen 첫 실행 경고(R2).
+- [ ] RoFormer(`numba`/`llvmlite`) 동봉 검증 → 별도/확장 번들로 추가. **보류**: numba 동결은
+      `collect_all numba` + 런타임 고려가 필요하고 빌드가 무거움. 현재 번들은 RoFormer 선택 시
+      친절히 degrade(에러 안내). 별도 세션에서 검증 권장.
+- [ ] 배포 채널 — 기본 **GitHub Releases**(태그 푸시 시 아티팩트). 현재 워크플로는
+      `upload-artifact`까지; 릴리스 자동 첨부는 후속.
+
+> Phase 5는 외부 의존(유료 인증서·CI 러너·numba 동결)이 커서 자율 완료 불가 항목이 있음.
+> 코드로 가능한 부분(CI 매트릭스)은 스캐폴드했고 나머지는 사유와 함께 명시.
 
 ---
 
