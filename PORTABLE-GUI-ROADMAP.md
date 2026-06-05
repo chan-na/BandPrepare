@@ -11,10 +11,10 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
 
 ## 🧭 현재 상태 / 다음 액션  ← 매 세션 여기부터
 
-- **현재 Phase**: Phase 0 (계획 수립 완료, 착수 전)
-- **다음 액션**: Phase 1(ffmpeg 동봉) → Phase 4(PyInstaller PoC) 순으로 "번들이 실제로
-  도는가"를 먼저 검증. 막히면 GUI 작업 무의미.
-- **PoC 빌드 플랫폼**: (미정 — 후보: 현재 Intel mac x86_64)
+- **현재 Phase**: Phase 1 착수 (Phase 0 완료)
+- **다음 액션**: Phase 1(ffmpeg 동봉) → Phase 2(진행률 콜백) → Phase 3(GUI) →
+  Phase 4(PyInstaller PoC) 순으로 구현 중.
+- **PoC 빌드 플랫폼**: 현재 Intel mac x86_64 (Python 3.11, torch 2.2.2)
 - **블로커/메모**: 없음
 
 ---
@@ -57,7 +57,7 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 ### Phase 0 — 계획 / 저장소 준비  ✅
 - [x] 배포 방식·GUI 프레임워크 결정 (위 Decision log)
 - [x] 로드맵 문서화 (이 파일)
-- [ ] `.gitignore`에 빌드 산출물 추가(`build/`, `dist/`, `*.spec` 정책 결정)
+- [x] `.gitignore`에 빌드 산출물 추가(`build/`, `dist/`). `*.spec`은 추적 유지(소스 파일)
 
 ### Phase 1 — ffmpeg 동봉 (작고 즉시 검증 가능)
 - [ ] `pyproject.toml` 의존성에 `imageio-ffmpeg` 추가

@@ -6,6 +6,11 @@ __pycache__/
 .venv/
 venv/
 
+# PyInstaller build artifacts (the bundles are huge; rebuild per platform).
+# bandprepare.spec is a tracked source file, so *.spec is intentionally NOT ignored.
+build/
+dist/
+
 # BandPrepare outputs
 output/
 
