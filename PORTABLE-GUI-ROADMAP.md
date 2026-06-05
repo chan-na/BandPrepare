@@ -84,16 +84,22 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - **메모**: 모델 내부 세부 진행률은 MVP 범위 밖(fraction은 단계 경계 추정치, 스피너로 충분).
   추후 demucs/larsnet tqdm 후킹 검토.
 
-### Phase 3 — PySide6 GUI (얇은 층)
-- [ ] `pyproject.toml`에 `gui` extra(`PySide6`) + `bandprepare-gui` 스크립트 엔트리 추가
-- [ ] `src/bandprepare/gui/` 생성: 메인 윈도우
-  - [ ] 입력 파일 드래그앤드롭 + 파일 선택
-  - [ ] 모델 드롭다운 — `registry`의 `STEM_MODELS`/`DRUM_MODELS`에서 **동적 생성**
-  - [ ] 스템 체크박스 / `--minus` / 포맷 / 출력 폴더 선택
-  - [ ] 실행 버튼 → **QThread 워커**가 `pipeline.run(Options)` 호출
-  - [ ] 진행바 + 로그 패널(Phase 2 콜백 연결)
-  - [ ] 완료 후 "출력 폴더 열기" 버튼
-- **완료 기준**: GUI에서 곡 선택 → 분리 → 출력 폴더 열기까지 한 번에 동작.
+### Phase 3 — PySide6 GUI (얇은 층)  ✅
+- [x] `pyproject.toml`에 `gui` extra(`PySide6>=6.5`) + `bandprepare-gui` 스크립트 엔트리 추가
+- [x] `src/bandprepare/gui/` 생성 (`app.py`=윈도우+`build_options`+`main`,
+      `worker.py`=QThread 워커, `__init__.py`/`__main__.py` 엔트리)
+  - [x] 입력 파일 드래그앤드롭 + 파일 선택 (선택 시 출력 폴더 자동 채움)
+  - [x] 모델 드롭다운 — `registry`의 `STEM_MODELS`/`DRUM_MODELS`에서 **동적 생성**
+  - [x] 스템 체크박스 / `--minus` 체크박스 / 포맷 / 장치 / 출력 폴더 선택
+        (스템 모델에 `drums` 없으면 드럼 관련 컨트롤 자동 비활성화 — 예: mel_band_roformer)
+  - [x] 실행 버튼 → **QThread 워커**가 `pipeline.run(Options)` 호출 (시그널로만 교신)
+  - [x] 진행바 + 로그 패널(Phase 2 콜백을 `progress` 시그널로 연결, fraction→bar)
+  - [x] 완료 후 "출력 폴더 열기" 버튼 (`QDesktopServices`)
+- **검증**: PySide6 6.11.1을 Intel mac x86_64에서 설치/오프스크린 구동 확인. GUI 단위
+  테스트 4종(`build_options` 매핑, 모델 전환 시 컨트롤 토글, 위젯 수집, 입력 필수) 통과.
+  실제 분리 실행은 디스플레이/모델 가중치 필요 → Phase 4 번들 검증과 함께 수동 확인 예정.
+- **완료 기준**: GUI 구성·옵션 수집·워커 연결·진행 표시까지 동작(오프스크린 검증). 실
+  분리 end-to-end는 디스플레이 환경에서 수동 확인.
 
 ### Phase 4 — PyInstaller 패키징 PoC (★ Phase 1 직후 권장)
 - [ ] `bandprepare.spec` 작성: one-folder, 엔트리=GUI

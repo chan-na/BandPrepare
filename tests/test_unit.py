@@ -444,3 +444,125 @@ def test_run_without_callback_no_regression(tmp_path, monkeypatch):
         monkeypatch, tmp_path, drum_split=True, stems=["vocals", "drums", "bass"], callback=None)
     assert rc == 0
     assert events == []
+
+
+# --- Phase 3: PySide6 GUI --------------------------------------------------
+# These skip cleanly when PySide6 is absent and always run offscreen so they
+# need no display. pipeline.run is never called for real (no model downloads).
+
+def _qapp():
+    """A single shared offscreen QApplication for all GUI tests."""
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
+def test_build_options_maps_state():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import build_options
+
+    opts = build_options(
+        input_path=Path("/music/song.mp3"),
+        output_dir=Path("/out/song"),
+        stem_model="htdemucs_6s",
+        drum_model="mdx23c",
+        stems=["vocals", "drums"],
+        minus=["bass"],
+        fmt="flac",
+        device_choice="cpu",
+        drum_split=False,
+        keep_drums_stem=True,
+        overwrite=True,
+        verbose=True,
+    )
+    assert opts.input_path == Path("/music/song.mp3")
+    assert opts.output_dir == Path("/out/song")
+    assert opts.stem_model == "htdemucs_6s"
+    assert opts.drum_model == "mdx23c"
+    assert opts.stems == ["vocals", "drums"]
+    assert opts.minus == ["bass"]
+    assert opts.fmt == "flac"
+    assert opts.device_choice == "cpu"
+    assert opts.drum_split is False
+    assert opts.keep_drums_stem is True
+    assert opts.overwrite is True
+    assert opts.verbose is True
+
+
+def test_mainwindow_stem_checkboxes_and_drum_controls():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+
+    # Default model -> its full stem set, all checked.
+    default_stems = registry.resolve_stem(registry.DEFAULT_STEM_MODEL).output_stems
+    assert tuple(win._stem_checks) == default_stems
+    assert all(cb.isChecked() for cb in win._stem_checks.values())
+    # Mix-minus checkboxes mirror the stems but start unchecked.
+    assert tuple(win._minus_checks) == default_stems
+    assert not any(cb.isChecked() for cb in win._minus_checks.values())
+    # A 6-stem model has drums -> drum controls enabled.
+    assert win._drum_combo.isEnabled()
+    assert win._drum_split_check.isEnabled()
+    assert win._keep_drums_check.isEnabled()
+
+    # Switch to a 2-stem vocals/instrumental model (no drums).
+    idx = win._stem_combo.findData("mel_band_roformer")
+    assert idx >= 0
+    win._stem_combo.setCurrentIndex(idx)
+    assert tuple(win._stem_checks) == ("vocals", "other")
+    assert tuple(win._minus_checks) == ("vocals", "other")
+    # Drum controls disabled when the model emits no drums stem.
+    assert not win._drum_combo.isEnabled()
+    assert not win._drum_split_check.isEnabled()
+    assert not win._keep_drums_check.isEnabled()
+
+    # Switch back to a 6-stem model -> drum controls re-enabled.
+    idx = win._stem_combo.findData("htdemucs_6s")
+    assert idx >= 0
+    win._stem_combo.setCurrentIndex(idx)
+    assert "drums" in win._stem_checks
+    assert win._drum_combo.isEnabled()
+    assert win._drum_split_check.isEnabled()
+    assert win._keep_drums_check.isEnabled()
+
+
+def test_mainwindow_collect_options_reads_widgets():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    win._input_edit.setText("/music/My Song.mp3")
+    win._output_edit.setText("/out/My Song")
+    # Keep only vocals; remove bass via mix-minus.
+    for name, cb in win._stem_checks.items():
+        cb.setChecked(name == "vocals")
+    win._minus_checks["bass"].setChecked(True)
+    win._fmt_combo.setCurrentText("mp3")
+    win._device_combo.setCurrentText("cpu")
+
+    opts = win._collect_options()
+    assert opts is not None
+    assert opts.input_path == Path("/music/My Song.mp3")
+    assert opts.output_dir == Path("/out/My Song")
+    assert opts.stems == ["vocals"]
+    assert opts.minus == ["bass"]
+    assert opts.fmt == "mp3"
+    assert opts.device_choice == "cpu"
+
+
+def test_mainwindow_collect_options_requires_input():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    win._input_edit.setText("")
+    assert win._collect_options() is None
