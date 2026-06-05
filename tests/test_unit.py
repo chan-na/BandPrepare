@@ -265,3 +265,101 @@ def test_make_sample_shape(tmp_path):
     assert sr == 44100
     assert data.shape[0] == 44100
     assert data.shape[1] == 2
+
+
+# --- Phase 1: bundled ffmpeg resolution -----------------------------------
+
+def test_resolve_ffmpeg_prefers_system(monkeypatch):
+    from bandprepare import audio
+
+    monkeypatch.setattr(audio.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(audio, "_bundled_ffmpeg_exe", lambda: "/bundled/ffmpeg")
+    assert audio.resolve_ffmpeg() == "/usr/bin/ffmpeg"
+    assert audio.ffmpeg_available() is True
+
+
+def test_resolve_ffmpeg_falls_back_to_bundled(monkeypatch):
+    from bandprepare import audio
+
+    monkeypatch.setattr(audio.shutil, "which", lambda name: None)
+    monkeypatch.setattr(audio, "_bundled_ffmpeg_exe", lambda: "/bundled/ffmpeg")
+    assert audio.resolve_ffmpeg() == "/bundled/ffmpeg"
+    assert audio.ffmpeg_available() is True
+    audio.ensure_ffmpeg()  # must not raise when only the bundle exists
+
+
+def test_ensure_ffmpeg_raises_when_none(monkeypatch):
+    from bandprepare import audio
+    from bandprepare.errors import DependencyError
+
+    monkeypatch.setattr(audio.shutil, "which", lambda name: None)
+    monkeypatch.setattr(audio, "_bundled_ffmpeg_exe", lambda: None)
+    assert audio.ffmpeg_available() is False
+    with pytest.raises(DependencyError):
+        audio.ensure_ffmpeg()
+
+
+def test_decode_with_ffmpeg_reshapes_interleaved_f32le(monkeypatch):
+    import subprocess
+
+    import numpy as np
+
+    from bandprepare import audio
+
+    # Two stereo frames: L0,R0, L1,R1 (interleaved).
+    pcm = np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float32).tobytes()
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=pcm, stderr=b""),
+    )
+    wav = audio._decode_with_ffmpeg(Path("x.mp3"), channels=2, samplerate=44100, exe="ffmpeg")
+    assert tuple(wav.shape) == (2, 2)
+    assert wav[0].tolist() == [0.0, 2.0]  # channel 0 = L
+    assert wav[1].tolist() == [1.0, 3.0]  # channel 1 = R
+
+
+def test_prepare_ffmpeg_path_links_bundled(tmp_path, monkeypatch):
+    from bandprepare import audio
+
+    fake = tmp_path / "ffmpeg-macos-x86_64-v9"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    monkeypatch.setattr(audio, "_bundled_ffmpeg_exe", lambda: str(fake))
+    monkeypatch.setattr(audio, "_ffmpeg_path_prepared", False)
+    monkeypatch.setenv("PATH", str(tmp_path / "nothing-here"))  # no system ffmpeg
+    monkeypatch.setenv("BANDPREPARE_CACHE", str(tmp_path / "cache"))
+
+    out = audio.prepare_ffmpeg_path()
+    assert out is not None
+    assert Path(out).name == "ffmpeg"
+    assert audio.shutil.which("ffmpeg") == out  # now resolvable by bare name
+
+
+def test_load_track_decodes_mp3_via_bundled_ffmpeg(tmp_path, monkeypatch):
+    # End-to-end Phase 1 completion check: decode an mp3 with NO system
+    # ffmpeg/ffprobe on PATH — only the bundled (ffprobe-less) path can work.
+    pytest.importorskip("imageio_ffmpeg")
+    import subprocess
+
+    import numpy as np
+    import soundfile as sf
+
+    from bandprepare import audio
+
+    exe = audio._bundled_ffmpeg_exe()
+    if not exe:
+        pytest.skip("bundled ffmpeg not available")
+
+    sr = 44100
+    n = int(sr * 0.2)
+    tone = (0.1 * np.sin(2 * np.pi * 220 * np.arange(n) / sr)).astype(np.float32)
+    data = np.stack([tone, tone], axis=1)
+    wav_path = tmp_path / "a.wav"
+    sf.write(str(wav_path), data, sr)
+    mp3_path = tmp_path / "a.mp3"
+    subprocess.run([exe, "-y", "-loglevel", "error", "-i", str(wav_path), str(mp3_path)], check=True)
+
+    monkeypatch.setenv("PATH", str(tmp_path / "nothing-here"))  # hide system ffmpeg/ffprobe
+    wav = audio.load_track(mp3_path, channels=2, samplerate=sr)
+    assert wav.shape[0] == 2
+    assert wav.shape[1] > 0

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .audio import SUPPORTED_FORMATS
+from .audio import SUPPORTED_FORMATS, prepare_ffmpeg_path
 from .device import VALID_CHOICES
 from .errors import BandPrepareError, EXIT_INTERRUPTED, EXIT_USAGE
 from .logging_utils import get_logger, setup_logging
@@ -169,6 +169,9 @@ def main(argv: list[str] | None = None) -> int:
         verbose=args.verbose,
         minus=minus,
     )
+
+    # Make a usable ffmpeg resolvable (bundled or system) before decoding.
+    prepare_ffmpeg_path()
 
     try:
         return run(opts)

@@ -24,6 +24,9 @@ dependencies = [
     "pyyaml>=6.0",
     "tqdm>=4.65",
     "gdown>=5.1",
+    # Static ffmpeg bundled in the wheel (no system install / runtime download).
+    # ffmpeg only (no ffprobe); the decode path in audio.py accounts for that.
+    "imageio-ffmpeg>=0.5",
 ]
 
 [project.optional-dependencies]

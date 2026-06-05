@@ -59,14 +59,19 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - [x] 로드맵 문서화 (이 파일)
 - [x] `.gitignore`에 빌드 산출물 추가(`build/`, `dist/`). `*.spec`은 추적 유지(소스 파일)
 
-### Phase 1 — ffmpeg 동봉 (작고 즉시 검증 가능)
-- [ ] `pyproject.toml` 의존성에 `imageio-ffmpeg` 추가
-- [ ] 앱 시작 시 `imageio_ffmpeg.get_ffmpeg_exe()`의 디렉터리를 `PATH` 앞에 주입하는
-      헬퍼 추가 (CLI/GUI 공통 진입에서 호출). demucs `AudioFile`(`audio.py:65`)이 이를 사용
-- [ ] `audio.py`의 `ensure_ffmpeg()`/`ffmpeg_available()`(`audio.py:23-35`)가 동봉
-      ffmpeg도 인식하도록 수정 (PATH 주입이면 `shutil.which`가 자동으로 잡음)
-- **완료 기준**: 시스템 ffmpeg가 PATH에 **없는 상태**에서 `bandprepare 곡.mp3`가
-  mp3를 디코딩해 정상 분리.
+### Phase 1 — ffmpeg 동봉 (작고 즉시 검증 가능)  ✅
+- [x] `pyproject.toml` 의존성에 `imageio-ffmpeg` 추가
+- [x] 앱 시작 시 동봉 ffmpeg를 `PATH`에 노출하는 헬퍼 `prepare_ffmpeg_path()` 추가
+      (CLI 진입 `cli.main`에서 호출, GUI도 공유 예정).
+- [x] `audio.py`의 `ensure_ffmpeg()`/`ffmpeg_available()`가 동봉 ffmpeg도 인식
+      (`resolve_ffmpeg()` = system PATH → 번들 순).
+- **주의(중요)**: `imageio-ffmpeg`는 **ffmpeg만** 동봉(ffprobe 없음)하고 바이너리 이름이
+  버전 접미사(`ffmpeg-macos-x86_64-v7.1`)라 단순 PATH 주입으론 demucs `AudioFile`이
+  못 씀(ffprobe 필요). → 압축 입력은 `load_track`이 **ffmpeg만으로 직접 디코딩**
+  (`_decode_with_ffmpeg`, f32le PCM, ffprobe 불필요)하는 경로를 추가. demucs 경로는
+  시스템 풀 ffmpeg가 있을 때만 1순위로 사용.
+- **완료 기준**: ✅ 시스템 ffmpeg/ffprobe가 PATH에 **없는 상태**에서 mp3 디코딩 성공
+  (`test_load_track_decodes_mp3_via_bundled_ffmpeg`로 자동 검증).
 
 ### Phase 2 — 코어에 진행률 콜백
 - [ ] `pipeline.Options`에 `progress_callback: Callable[[stage:str, fraction:float|None, msg:str], None] | None` 추가
