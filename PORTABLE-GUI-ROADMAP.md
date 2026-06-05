@@ -11,10 +11,13 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
 
 ## 🧭 현재 상태 / 다음 액션  ← 매 세션 여기부터
 
-- **현재 Phase**: Phase 3 착수 (Phase 0·1·2 완료)
-- **다음 액션**: Phase 3(PySide6 GUI) → Phase 4(PyInstaller PoC) 구현 중.
-- **PoC 빌드 플랫폼**: 현재 Intel mac x86_64 (Python 3.11, torch 2.2.2)
-- **블로커/메모**: 없음
+- **현재 Phase**: Phase 0~4 완료 ✅ — Phase 5(멀티플랫폼/서명/RoFormer)만 남음
+- **다음 액션**: Phase 5 — GitHub Actions 빌드 매트릭스(스캐폴드 추가, CI 첫 실행 검증
+  필요) / macOS·Win 코드서명(유료 인증서 필요) / RoFormer 동봉 검증.
+- **PoC 빌드 플랫폼**: Intel mac x86_64 (Python 3.11, torch 2.2.2, PySide6 6.11.1).
+  동결 번들 self-test 통과(시스템 ffmpeg/torch 없이 동작 입증).
+- **블로커/메모**: 실 모델 분리 end-to-end는 디스플레이+가중치 필요 → 수동 검증 권장.
+  코드서명·공증은 유료 인증서가 있어야 진행 가능.
 
 ---
 
@@ -101,14 +104,28 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - **완료 기준**: GUI 구성·옵션 수집·워커 연결·진행 표시까지 동작(오프스크린 검증). 실
   분리 end-to-end는 디스플레이 환경에서 수동 확인.
 
-### Phase 4 — PyInstaller 패키징 PoC (★ Phase 1 직후 권장)
-- [ ] `bandprepare.spec` 작성: one-folder, 엔트리=GUI
-  - `--collect-all torch torchaudio demucs soundfile imageio_ffmpeg PySide6`
-  - vendor의 YAML config(`vendor/roformer/configs/`, `vendor/mdx23c/configs/`)를 `datas`로 동봉
-  - hidden imports 정리(soundfile, yaml, demucs 서브모듈 등)
-- [ ] 현재 플랫폼에서 빌드
-- **완료 기준**: **인터넷 차단(또는 캐시 삭제 후 모델만 허용) 상태**에서 번들 실행 →
-  모델만 받고 전체 파이프라인 정상. 시스템에 Python/ffmpeg/torch 미설치여도 동작.
+### Phase 4 — PyInstaller 패키징 PoC (★ Phase 1 직후 권장)  ✅
+- [x] `bandprepare.spec` 작성: one-folder(onedir), 엔트리=GUI(`packaging/bandprepare_gui.py`)
+  - `collect_all`: torch, torchaudio, demucs, soundfile, imageio_ffmpeg, PySide6
+  - vendor YAML config(`vendor/**/configs/*.yaml`)를 런타임 경로(`bandprepare/vendor/...`)에 `datas`로 동봉
+  - hidden imports: bandprepare 백엔드(지연 임포트라 명시) + julius/lameenc/dora/yaml
+  - excludes: RoFormer **모델/deps**(`vendor.roformer.*`, numba/llvmlite/rotary-embedding/
+    beartype/einops/librosa) — D6. **단** `separation.roformer` 모듈 자체는 MDX23C가
+    `_demix`를 재사용하므로 **포함**(모듈 상단은 경량, 무거운 vendor 모델은 지연 임포트)
+  - `pyinstaller`는 `build` extra로 추가
+- [x] 현재 플랫폼(Intel mac x86_64)에서 빌드 — 산출물 `dist/bandprepare/` (~1.4GB)
+- **검증(자동, 디스플레이/모델 불필요)**: GUI `main()`에 `BANDPREPARE_GUI_SELFTEST=1` 훅
+  추가 → 동결 번들을 **시스템 ffmpeg를 PATH에서 제거**하고 오프스크린 실행:
+  - torch/torchaudio/demucs/soundfile/imageio_ffmpeg/numpy/yaml 임포트 OK (시스템 Python/torch 불필요)
+  - `MainWindow` 구성 OK, registry 4 stem / 3 drum 모델
+  - **동봉 ffmpeg 해석 OK** → 셸 심링크가 `_internal/.../ffmpeg-macos-x86_64-v7.1`을 가리키고
+    `ffmpeg -version` 실행됨 (압축 입력 디코딩 경로 동작 입증)
+  - MDX23C 번들 config 읽기 OK, 캐시(`~/.cache/bandprepare`, 번들 바깥)에 쓰기 OK → exit 0
+- **완료 기준**: ✅ 패키징 고유 리스크(임포트/데이터/ffmpeg/캐시) 동결 상태에서 통과.
+  실제 모델 다운로드+분리 end-to-end(≈2GB·CPU 수분, 코어 코드는 이미 테스트됨)는 디스플레이
+  환경에서 수동 확인 권장.
+- **알려진 한계(PoC)**: GUI 드롭다운에 RoFormer 스템 모델이 보이지만 이 번들에선 선택 시
+  친절한 에러(`pip install bandprepare[roformer]`)로 degrade. RoFormer 동봉은 Phase 5.
 
 ### Phase 5 — (이후) 멀티플랫폼 / 서명 / RoFormer
 - [ ] GitHub Actions 빌드 매트릭스 (mac x86_64, mac arm64, Linux x86_64, Win x86_64)

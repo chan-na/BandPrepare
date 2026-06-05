@@ -33,6 +33,8 @@ dependencies = [
 dev = ["pytest>=7"]
 # Desktop GUI (PySide6/Qt). Optional so the headless CLI install stays lean.
 gui = ["PySide6>=6.5"]
+# Packaging the portable one-folder bundle (see bandprepare.spec). Build-time only.
+build = ["pyinstaller>=6.0"]
 # RoFormer stem models (bs_roformer, mel_band_roformer). Kept optional so the
 # base install stays lean and Intel-mac-safe. numba/llvmlite are capped because
 # newer releases drop x86_64-macOS wheels (mirroring the torch<2.3 situation).

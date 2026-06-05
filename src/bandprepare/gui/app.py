@@ -7,6 +7,7 @@ The window only gathers state and displays progress; all audio work happens in
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -410,10 +411,38 @@ class MainWindow(QMainWindow):
             )
 
 
+def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
+    """Headless packaging smoke test (no event loop, no model downloads).
+
+    Used to verify a frozen (PyInstaller) bundle has every heavy dependency and
+    vendored data file wired up — exercising the import + config-read paths that
+    a real separation would hit, minus the network/weights. Triggered by
+    ``BANDPREPARE_GUI_SELFTEST=1``.
+    """
+    import importlib
+
+    app.processEvents()
+    for mod in ("torch", "torchaudio", "demucs", "soundfile", "imageio_ffmpeg", "numpy", "yaml"):
+        importlib.import_module(mod)
+    # Bundled drum backend must import and find its vendored YAML config.
+    from ..separation import registry
+    from ..separation.mdx23c import _load_config
+
+    registry.format_table()
+    _load_config()
+    print(
+        f"SELFTEST OK ffmpeg={ffmpeg_path!r} "
+        f"stems={len(registry.STEM_MODELS)} drums={len(registry.DRUM_MODELS)}"
+    )
+    return 0
+
+
 def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     # Expose the bundled ffmpeg on PATH once, before any separation runs.
-    audio.prepare_ffmpeg_path()
+    ffmpeg_path = audio.prepare_ffmpeg_path()
     window = MainWindow()
     window.show()
+    if os.environ.get("BANDPREPARE_GUI_SELFTEST"):
+        return _selftest(app, ffmpeg_path)
     return app.exec()
