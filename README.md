@@ -150,28 +150,49 @@ output/내곡/
 
 ### 🎶 내 파트만 빼고 듣기 (마이너스원 백킹 트랙)
 
-`--minus` 한 번이면 **선택한 악기를 뺀 합본 파일**이 바로 만들어집니다. "내 파트 빼고
-들으면서 같이 연주"하는 용도예요. 결과는 `output/<곡>/mixes/` 폴더에 생깁니다.
+`--minus` 한 번이면 **내 악기만 빠진 합본 한 파일**이 바로 만들어집니다.
+이걸 틀어 놓고 내 파트를 직접 연주하면 합주 연습이 돼요.
+결과는 `output/<곡>/mixes/minus-<악기>.wav` 로 저장됩니다.
 
 ```bash
-# 베이스 뺀 합본 (베이시스트 연습용)
-bandprepare 내곡.mp3 --minus bass        # → mixes/minus-bass.wav
-
-# 보컬 뺀 MR
-bandprepare 내곡.mp3 --minus vocals      # → mixes/minus-vocals.wav
-
-# 보컬·베이스 둘 다 빼기 (콤마로 여러 개)
-bandprepare 내곡.mp3 --minus vocals,bass # → mixes/minus-vocals-bass.wav
+bandprepare 내곡.mp3 --minus bass          # 베이스 자리만 비운 합본
+bandprepare 내곡.mp3 --minus vocals        # 보컬 뺀 MR(노래방 반주)
+bandprepare 내곡.mp3 --minus vocals,bass   # 여러 개는 콤마로 (둘 다 비움)
 ```
 
-> ℹ️ 계산 방식은 `원본 믹스 − 선택 스템들의 합`이라 잔향/잔여가 남아 자연스럽습니다
-> (카라오케/마이너스원의 표준 방식). 선택할 수 있는 악기는 `--stem-model` 에 따라 다르며,
-> `--stems` 와는 독립입니다(개별 스템 저장 여부와 상관없이 항상 만들 수 있음).
-> 빼는 악기는 1단계 스템 단위입니다(킥/스네어 같은 드럼 조각 단위는 아직 미지원).
+**내 역할에 맞춰 고르세요** (기본 모델 `htdemucs_6s` 기준):
 
-**대안 — DAW/플레이어에서 직접**: 모든 트랙을 올리고 내 파트만 음소거해도 됩니다.
-ffmpeg로 수동으로 합치고 싶다면, 드럼을 통째로 받도록 `--no-drum-split` 으로 분리한 뒤
-(그러면 `instruments/drums.wav` 도 생김) 원하는 트랙만 섞으면 됩니다:
+| 내 역할(빼고 싶은 것) | 명령 | 만들어지는 파일 |
+|---|---|---|
+| 보컬 / 노래방 MR | `--minus vocals` | `mixes/minus-vocals.wav` |
+| 베이스 | `--minus bass` | `mixes/minus-bass.wav` |
+| 기타 | `--minus guitar` | `mixes/minus-guitar.wav` |
+| 건반/피아노 | `--minus piano` | `mixes/minus-piano.wav` |
+| 드럼 | `--minus drums` | `mixes/minus-drums.wav` |
+| 보컬 듀엣·기타 둘 다 | `--minus vocals,guitar` | `mixes/minus-vocals-guitar.wav` |
+
+> 💡 **보컬을 더 깨끗하게 빼려면** 보컬 분리에 특화된 모델을 함께 쓰세요:
+> ```bash
+> bandprepare 내곡.mp3 --minus vocals --stem-model mel_band_roformer
+> ```
+> `mel_band_roformer` 는 보컬/반주 2스템 모델이라 잔여 보컬이 가장 적습니다
+> (대신 RoFormer extra 설치 필요 — 아래 "분리 모델 바꾸기" 참고).
+
+> 💡 휴대용으로 작게 받으려면 `--format mp3` 를, 드럼 세부 분리를 건너뛰어 더 빨리
+> 만들려면 `--no-drum-split` 를 같이 주면 됩니다(마이너스 합본 결과는 동일).
+
+> ℹ️ **동작 방식**: `원본 믹스 − 선택 스템들의 합` 으로 만듭니다(카라오케/마이너스원의
+> 표준 방식). 원본에서 빼므로 잔향·공간감이 남아 자연스럽습니다.
+> - 뺄 수 있는 악기는 `--stem-model` 에 따라 다릅니다(`--list-models` 로 확인).
+> - `--stems`(개별 스템 저장)와는 **독립**이라, 저장하지 않은 악기도 뺄 수 있습니다.
+> - 드럼은 통째로(`--minus drums`)만 가능하고, 킥·스네어 같은 **드럼 조각 단위는 아직 미지원**입니다.
+
+<details>
+<summary>대안 — DAW/ffmpeg로 직접 합치기 (수동)</summary>
+
+`--minus` 대신 직접 섞고 싶다면, 음악 플레이어/DAW에 모든 트랙을 올리고 내 파트만
+음소거해도 됩니다. ffmpeg로 합치려면 드럼을 통째로 받도록 `--no-drum-split` 으로 분리한 뒤
+(그러면 `instruments/drums.wav` 도 생김) 원하는 트랙만 섞으세요. 예) **기타만 뺀 백킹**:
 
 ```bash
 cd output/내곡/instruments
@@ -179,9 +200,11 @@ ffmpeg -i vocals.wav -i bass.wav -i piano.wav -i other.wav -i drums.wav \
   -filter_complex amix=inputs=5:normalize=0 ../기타뺀_백킹.wav
 ```
 
-> ℹ️ `amix` 의 `normalize=0` 은 음량을 그대로 더합니다(소리가 크면 플레이어에서 줄이기).
-> 드럼 세부 분리까지 한 상태에서 합치려면 분리 시 `--keep-drums-stem` 을 추가해 원본
+> `amix` 의 `normalize=0` 은 음량을 그대로 더합니다(소리가 크면 플레이어에서 줄이기).
+> 드럼 세부 분리까지 한 상태에서 합치려면 분리 시 `--keep-drums-stem` 으로 원본
 > `drums.wav` 를 남겨 두면 됩니다.
+
+</details>
 
 ### 🥁 드럼 파트 연습 (킥·스네어 따로)
 
