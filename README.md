@@ -314,6 +314,58 @@ bandprepare 내곡.mp3 --overwrite
 
 # 📚 레퍼런스 (Reference)
 
+## 주요 의존성 한눈에 / Dependencies at a glance
+
+BandPrepare가 의존하는 외부 요소를 한 표로 정리합니다. **직접 설치가 필요한 것은
+①②뿐**이고, ③ Python 패키지는 `pip install -e .` 가 자동 설치, ④ 모델 가중치는
+첫 실행 시 자동 다운로드됩니다.
+
+### ① 시스템 / 런타임 (직접 설치)
+
+| 항목 | 조건 | 설치 | 필수? |
+|------|------|------|-------|
+| **ffmpeg** | — | `brew install ffmpeg` (Ubuntu/Debian: `apt install ffmpeg`) | mp3·m4a 등 압축 음원 입력 시 필수 (wav/flac만이면 선택) |
+| **Python** | `>=3.10` | python.org / `brew` / pyenv 등 | ✅ 필수 |
+| **uv** | — | [astral.sh/uv](https://docs.astral.sh/uv/) | 선택 (없으면 표준 `pip`) |
+
+### ② Python 패키지 — base (`pip install -e .` 가 자동 설치)
+
+| 패키지 | 버전 핀 | 역할 |
+|--------|---------|------|
+| `torch`, `torchaudio` | `>=2.1, <2.3` | 추론 엔진 (핀 사유는 아래 플랫폼 메모) |
+| `demucs` | `==4.0.1` | Stage 1 악기 분리 + DrumSep 로딩 |
+| `numpy` | `<2` | torch 2.2 ABI 호환 |
+| `soundfile` | `>=0.12` | wav/flac 입출력 (libsndfile 번들, 별도 설치 불필요) |
+| `pyyaml` | `>=6.0` | 벤더 모델 config 로딩 |
+| `tqdm` | `>=4.65` | 진행 막대 |
+| `gdown` | `>=5.1` | Google Drive 가중치 다운로드(LarsNet/DrumSep) |
+
+> **선택 extra** `.[roformer]` — `bs_roformer`/`mel_band_roformer` 사용 시에만 필요:
+> `rotary-embedding-torch`, `beartype`, `einops`, `librosa`,
+> `numba (>=0.59,<0.61)`, `llvmlite (>=0.42,<0.44)`.
+> **dev extra** `.[dev]` — `pytest (>=7)` (테스트용).
+
+### ③ 모델 가중치 — 첫 실행 시 자동 다운로드 (캐시)
+
+캐시 위치: `BANDPREPARE_CACHE` → `XDG_CACHE_HOME` → `~/.cache` 순으로 결정.
+
+| 모델 | 단계 | 용량 | 받는 곳 | 캐시 경로 |
+|------|------|------|---------|-----------|
+| Demucs (`htdemucs_*`) | 1 | ~300 MB | PyTorch hub | `~/.cache/torch` |
+| LarsNet (기본 드럼) | 2 | ~562 MB | Google Drive (gdown) | `~/.cache/bandprepare/larsnet` |
+| DrumSep | 2 | ~167 MB | Google Drive (gdown) | `~/.cache/bandprepare/drumsep` |
+| RoFormer | 1 | ~500–870 MB | GitHub / HuggingFace | `~/.cache/bandprepare/roformer` |
+| MDX23C | 2 | ~438 MB | HuggingFace | `~/.cache/bandprepare/mdx23c` |
+
+> 💾 **디스크 공간**: 기본 조합(`htdemucs_6s` + `larsnet`)은 약 **860 MB**, 모든 모델을
+> 받으면 합계 약 **2 GB** 정도가 캐시에 쌓입니다.
+> 🌐 **네트워크**: 첫 실행에는 인터넷 연결이 필요합니다. LarsNet/DrumSep은
+> **Google Drive**에서 받으므로, Google Drive 접근이 막힌 환경(사내망 등)에서는
+> 실패할 수 있습니다(이때는 `--drum-model mdx23c`처럼 HuggingFace 기반 모델 사용).
+
+> 📌 `torch<2.3`·`numpy<2`·`numba/llvmlite` 등 버전 핀의 배경은 아래 "출력 구조" 절의
+> 플랫폼 메모와 [ARCHITECTURE.md](ARCHITECTURE.md) §9를 참고하세요.
+
 ## 옵션 전체 / All options
 
 ```
