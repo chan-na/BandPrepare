@@ -11,9 +11,8 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
 
 ## 🧭 현재 상태 / 다음 액션  ← 매 세션 여기부터
 
-- **현재 Phase**: Phase 1 착수 (Phase 0 완료)
-- **다음 액션**: Phase 1(ffmpeg 동봉) → Phase 2(진행률 콜백) → Phase 3(GUI) →
-  Phase 4(PyInstaller PoC) 순으로 구현 중.
+- **현재 Phase**: Phase 3 착수 (Phase 0·1·2 완료)
+- **다음 액션**: Phase 3(PySide6 GUI) → Phase 4(PyInstaller PoC) 구현 중.
 - **PoC 빌드 플랫폼**: 현재 Intel mac x86_64 (Python 3.11, torch 2.2.2)
 - **블로커/메모**: 없음
 
@@ -73,13 +72,17 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - **완료 기준**: ✅ 시스템 ffmpeg/ffprobe가 PATH에 **없는 상태**에서 mp3 디코딩 성공
   (`test_load_track_decodes_mp3_via_bundled_ffmpeg`로 자동 검증).
 
-### Phase 2 — 코어에 진행률 콜백
-- [ ] `pipeline.Options`에 `progress_callback: Callable[[stage:str, fraction:float|None, msg:str], None] | None` 추가
-- [ ] `pipeline.run`이 단계 경계(stem 시작/끝, drum 시작/끝, minus, 저장)에서 콜백 emit
-- [ ] CLI는 콜백 미사용(기존 tqdm 유지) — 회귀 없음 확인
-- **완료 기준**: 콜백을 넘기면 단계 전환이 순서대로 보고됨(단위 테스트로 검증).
-- **메모**: 모델 내부 세부 진행률은 MVP 범위 밖(스피너로 충분). 추후 demucs/larsnet
-  tqdm 후킹 검토.
+### Phase 2 — 코어에 진행률 콜백  ✅
+- [x] `pipeline.Options`에 `progress_callback`(타입 별칭 `ProgressCallback =
+      Callable[[stage:str, fraction:float|None, msg:str], None]`) 추가
+- [x] `pipeline.run`이 단계 경계에서 `emit()` 호출:
+      `start → stem_model → load_audio → separate_stems → (save…) → stems_done →
+      [minus] → drum_model → separate_drums → (save…) → drums_done → done`
+      (드럼 분리 없으면 stem 단계만, 마지막 `done` fraction=1.0)
+- [x] CLI는 콜백 미설정(None) → `emit()`은 no-op, 기존 tqdm 유지 — 회귀 테스트로 확인
+- **완료 기준**: ✅ 콜백을 넘기면 단계 전환이 순서대로 보고됨(`test_progress_callback_*`).
+- **메모**: 모델 내부 세부 진행률은 MVP 범위 밖(fraction은 단계 경계 추정치, 스피너로 충분).
+  추후 demucs/larsnet tqdm 후킹 검토.
 
 ### Phase 3 — PySide6 GUI (얇은 층)
 - [ ] `pyproject.toml`에 `gui` extra(`PySide6`) + `bandprepare-gui` 스크립트 엔트리 추가

@@ -363,3 +363,84 @@ def test_load_track_decodes_mp3_via_bundled_ffmpeg(tmp_path, monkeypatch):
     wav = audio.load_track(mp3_path, channels=2, samplerate=sr)
     assert wav.shape[0] == 2
     assert wav.shape[1] > 0
+
+
+# --- Phase 2: pipeline progress callback ----------------------------------
+
+def _fake_info(kind, names):
+    from bandprepare.separation.base import ModelInfo
+
+    def load(info, device, **kw):
+        import torch
+
+        class _Sep:
+            def separate(self, wav, sr, progress=True):
+                return {n: torch.zeros(2, 100) for n in names}
+
+        return _Sep()
+
+    return ModelInfo(id=f"fake_{kind}", kind=kind, display=f"Fake {kind}",
+                     output_stems=tuple(names), samplerate=44100, load=load)
+
+
+def _run_with_fakes(monkeypatch, tmp_path, *, drum_split, stems, minus=None, callback="record"):
+    import torch
+
+    from bandprepare import pipeline
+
+    stem_info = _fake_info("stem", ["vocals", "drums", "bass"])
+    drum_info = _fake_info("drum", ["kick", "snare"])
+    monkeypatch.setattr(pipeline.registry, "resolve_stem", lambda _id: stem_info)
+    monkeypatch.setattr(pipeline.registry, "resolve_drum", lambda _id: drum_info)
+    monkeypatch.setattr(pipeline, "resolve_device", lambda _c: "cpu")
+    monkeypatch.setattr(pipeline.audio, "validate_input", lambda p: p)
+    monkeypatch.setattr(pipeline.audio, "load_track", lambda p, ch, sr: torch.zeros(2, 100))
+    monkeypatch.setattr(pipeline.audio, "save_waveform", lambda wav, path, sr, fmt: path)
+
+    events: list[tuple] = []
+    cb = (lambda stage, frac, msg: events.append((stage, frac, msg))) if callback == "record" else None
+    opts = pipeline.Options(
+        input_path=tmp_path / "song.wav",
+        output_dir=tmp_path / "out",
+        stems=stems,
+        drum_split=drum_split,
+        minus=minus or [],
+        progress_callback=cb,
+    )
+    return pipeline.run(opts), events
+
+
+def test_progress_callback_order_with_drum_split(tmp_path, monkeypatch):
+    rc, events = _run_with_fakes(
+        monkeypatch, tmp_path, drum_split=True, stems=["vocals", "drums", "bass"])
+    assert rc == 0
+    keys = [stage for stage, _f, _m in events if stage != "save"]
+    assert keys == [
+        "start", "stem_model", "load_audio", "separate_stems", "stems_done",
+        "drum_model", "separate_drums", "drums_done", "done",
+    ]
+    fracs = [f for _s, f, _m in events if f is not None]
+    assert fracs == sorted(fracs)            # monotonically non-decreasing
+    assert events[-1][0] == "done" and events[-1][1] == 1.0
+
+
+def test_progress_callback_no_drum_split(tmp_path, monkeypatch):
+    rc, events = _run_with_fakes(
+        monkeypatch, tmp_path, drum_split=False, stems=["vocals", "drums", "bass"])
+    assert rc == 0
+    keys = [stage for stage, _f, _m in events if stage != "save"]
+    assert keys == ["start", "stem_model", "load_audio", "separate_stems", "stems_done", "done"]
+
+
+def test_progress_callback_reports_minus(tmp_path, monkeypatch):
+    _rc, events = _run_with_fakes(
+        monkeypatch, tmp_path, drum_split=False, stems=["vocals", "bass"], minus=["bass"])
+    assert "minus" in [stage for stage, _f, _m in events]
+
+
+def test_run_without_callback_no_regression(tmp_path, monkeypatch):
+    # No callback => emit() is a no-op and the run completes normally.
+    rc, events = _run_with_fakes(
+        monkeypatch, tmp_path, drum_split=True, stems=["vocals", "drums", "bass"], callback=None)
+    assert rc == 0
+    assert events == []
