@@ -5,9 +5,11 @@ name: build
 # universal binary is impossible — we build one bundle per OS/arch (D1/D7):
 #   macos-13 = Intel x86_64, macos-14 = Apple Silicon arm64, Linux/Win = x86_64.
 #
-# NOTE: this workflow has not yet been exercised on CI — validate it on the first
-# run and adjust. Code signing / notarization (Phase 5) needs paid certificates
-# and is left as commented placeholders below.
+# CI status: linux-x86_64 / macos-arm64 / windows-x86_64 build + frozen self-test
+# pass. macos-13 (Intel) runners are often unavailable, so that job is marked
+# experimental (continue-on-error) and the arch is validated/released manually.
+# On a v* tag, each job also attaches its bundle archive to the GitHub Release.
+# Code signing / notarization (Phase 5) needs paid certs — placeholders below.
 
 on:
   push:
@@ -20,12 +22,18 @@ jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    # A stuck/failing Intel (macos-13) job must not fail the workflow or block a
+    # tagged release; that arch is validated locally and uploaded manually.
+    continue-on-error: ${{ matrix.experimental || false }}
+    permissions:
+      contents: write   # attach assets to the GitHub Release (tag pushes only)
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-13      # Intel x86_64
             label: macos-x86_64
+            experimental: true
           - os: macos-14      # Apple Silicon arm64
             label: macos-arm64
           - os: ubuntu-latest # Linux x86_64
@@ -91,3 +99,24 @@ jobs:
           name: bandprepare-${{ matrix.label }}
           path: dist/bandprepare
           if-no-files-found: error
+
+      # --- Release assets (v* tag pushes only) --------------------------------
+      # Package the onedir bundle into one archive and attach it to the tag's
+      # GitHub Release. tar.gz on Unix preserves symlinks + exec bits (PyInstaller
+      # bundles have both); Compress-Archive (zip) is fine on Windows. Each matrix
+      # job appends its own asset to the release that the action auto-creates.
+      - name: Package bundle (Unix)
+        if: runner.os != 'Windows' && startsWith(github.ref, 'refs/tags/')
+        run: tar -C dist -czf "bandprepare-${{ matrix.label }}-${{ github.ref_name }}.tar.gz" bandprepare
+
+      - name: Package bundle (Windows)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        run: Compress-Archive -Path dist\bandprepare -DestinationPath "bandprepare-${{ matrix.label }}-${{ github.ref_name }}.zip"
+
+      - name: Attach bundle to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bandprepare-${{ matrix.label }}-*.tar.gz
+            bandprepare-${{ matrix.label }}-*.zip
