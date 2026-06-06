@@ -331,7 +331,9 @@ def test_prepare_ffmpeg_path_links_bundled(tmp_path, monkeypatch):
 
     out = audio.prepare_ffmpeg_path()
     assert out is not None
-    assert Path(out).name == "ffmpeg"
+    # On Windows the link is ffmpeg.exe and shutil.which() reports ffmpeg.EXE
+    # (PATHEXT casing); compare the extension-less, case-folded stem.
+    assert Path(out).stem.lower() == "ffmpeg"
     assert audio.shutil.which("ffmpeg") == out  # now resolvable by bare name
 
 
