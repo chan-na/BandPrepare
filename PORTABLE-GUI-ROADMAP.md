@@ -11,9 +11,11 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
 
 ## 🧭 현재 상태 / 다음 액션  ← 매 세션 여기부터
 
-- **현재 Phase**: Phase 0~4 완료 ✅ — Phase 5(멀티플랫폼/서명/RoFormer)만 남음
-- **다음 액션**: Phase 5 — GitHub Actions 빌드 매트릭스(스캐폴드 추가, CI 첫 실행 검증
-  필요) / macOS·Win 코드서명(유료 인증서 필요) / RoFormer 동봉 검증.
+- **현재 Phase**: Phase 0~4 완료 ✅ — **Phase 5 CI 매트릭스 그린**(linux-x86_64 ·
+  macos-arm64 · windows-x86_64 빌드+동결 self-test 통과, 커밋 `2ab50a8`; Intel mac은
+  macos-13 러너 가용성 문제로 로컬 검증). 남은 Phase 5 항목만 후속.
+- **다음 액션**: torch CPU 휠 전환(Linux/Win 번들 크기↓) → macOS·Win 코드서명(유료
+  인증서 필요) → RoFormer 동봉 검증 → 태그 푸시 시 GitHub Releases 자동 첨부.
 - **PoC 빌드 플랫폼**: Intel mac x86_64 (Python 3.11, torch 2.2.2, PySide6 6.11.1).
   동결 번들 self-test 통과(시스템 ffmpeg/torch 없이 동작 입증).
 - **블로커/메모**: 실 모델 분리 end-to-end는 디스플레이+가중치 필요 → 수동 검증 권장.
@@ -128,11 +130,18 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
   친절한 에러(`pip install bandprepare[roformer]`)로 degrade. RoFormer 동봉은 Phase 5.
 
 ### Phase 5 — (이후) 멀티플랫폼 / 서명 / RoFormer  ◐ 부분
-- [x] GitHub Actions 빌드 매트릭스 **스캐폴드** (`.github/workflows/build.yml`):
+- [x] GitHub Actions 빌드 매트릭스 **검증 완료** (`.github/workflows/build.yml`, 커밋 `2ab50a8`):
       macos-13(x86_64)/macos-14(arm64)/ubuntu/windows, 각 OS에서 테스트 → `pyinstaller
       bandprepare.spec` 빌드 → **동결 self-test** → 아티팩트 업로드. universal2 대신 arch별
-      별도 빌드(D7). ⚠️ **CI 첫 실행으로 검증 필요**(로컬에서 실행 불가). Linux는 Qt 런타임
-      libs(apt) 설치 스텝 포함.
+      별도 빌드(D7). Linux는 Qt 런타임 libs(apt) 설치 스텝 포함.
+      **CI 그린**: linux-x86_64 · macos-arm64 · windows-x86_64 전부 빌드+동결 self-test 통과.
+      첫 실행에서 Windows만 실패했는데 코어가 아니라 테스트(`prepare_ffmpeg_path`가 Windows에서
+      `ffmpeg.exe`/PATHEXT 케이싱 `ffmpeg.EXE` 반환)였고 `2ab50a8`에서 수정.
+      ⚠️ **macos-13(Intel) 러너는 GitHub이 단계적으로 줄여 큐에서 50분+ 안 잡힘** → CI에선
+      best-effort, 대신 Intel 개발 머신에서 로컬 클린 빌드+self-test로 검증(번들 ~1.4G).
+      대안: `macos-13-large`로 교체하거나 매트릭스에서 Intel 제외(최신 Mac=arm64).
+- [ ] torch **CPU 휠로 전환**(`--index-url .../whl/cpu`, Linux/Windows만) — 현재 기본 PyPI가
+      CUDA 휠을 받아 번들/CI가 무거움. 크기·시간 최적화(워크플로에 주석 안내 있음).
 - [ ] macOS 코드사인 + 공증 / Windows 코드사인 — **유료 인증서 필요**(워크플로에 주석
       플레이스홀더만). 미서명 시 Gatekeeper/SmartScreen 첫 실행 경고(R2).
 - [ ] RoFormer(`numba`/`llvmlite`) 동봉 검증 → 별도/확장 번들로 추가. **보류**: numba 동결은
