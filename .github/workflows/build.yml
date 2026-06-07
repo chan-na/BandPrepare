@@ -134,6 +134,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # actions/setup-python defaults its tool cache to the hosted-runner path
+      # /Users/runner/hostedtoolcache, which isn't writable here. Point it at the
+      # runner's own _work/_tool (portable across any self-hosted runner). The
+      # service wrapper (runsvc.sh) ignores .env, so set it per-job here.
+      - name: Configure tool cache (self-hosted)
+        run: |
+          TOOL="$(cd "$RUNNER_WORKSPACE/.." && pwd)/_tool"
+          mkdir -p "$TOOL"
+          echo "RUNNER_TOOL_CACHE=$TOOL" >> "$GITHUB_ENV"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
