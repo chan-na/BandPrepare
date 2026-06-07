@@ -134,19 +134,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # actions/setup-python defaults its tool cache to the hosted-runner path
-      # /Users/runner/hostedtoolcache, which isn't writable here. Point it at the
-      # runner's own _work/_tool (portable across any self-hosted runner). The
-      # service wrapper (runsvc.sh) ignores .env, so set it per-job here.
-      - name: Configure tool cache (self-hosted)
+      # Not actions/setup-python: its macOS Python build hardcodes the install
+      # prefix /Users/runner/hostedtoolcache, which isn't writable here. Use uv
+      # (already on this runner) to provision Python 3.11 into a job-local seeded
+      # venv and put it on PATH for the steps below.
+      - name: Set up Python 3.11 (uv)
         run: |
-          TOOL="$(cd "$RUNNER_WORKSPACE/.." && pwd)/_tool"
-          mkdir -p "$TOOL"
-          echo "RUNNER_TOOL_CACHE=$TOOL" >> "$GITHUB_ENV"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+          uv python install 3.11
+          uv venv --seed --python 3.11 "$RUNNER_TEMP/bp-venv"
+          echo "$RUNNER_TEMP/bp-venv/bin" >> "$GITHUB_PATH"
 
       - name: Install package + extras
         run: |
