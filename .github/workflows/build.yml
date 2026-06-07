@@ -1,15 +1,17 @@
 name: build
 
-# Phase 5 scaffold (PORTABLE-GUI-ROADMAP.md): per-platform PyInstaller bundles.
-# torch is native and capped at <2.3 (last Intel-mac wheels), so a single
-# universal binary is impossible — we build one bundle per OS/arch (D1/D7):
-#   macos-13 = Intel x86_64, macos-14 = Apple Silicon arm64, Linux/Win = x86_64.
+# Per-platform PyInstaller bundles (PORTABLE-GUI-ROADMAP.md). torch is native and
+# has no macOS universal2 wheel, so a single universal binary is impossible — we
+# build one bundle per OS/arch (D1/D7).
 #
-# CI status: linux-x86_64 / macos-arm64 / windows-x86_64 build + frozen self-test
-# pass. macos-13 (Intel) runners are often unavailable, so that job is marked
-# experimental (continue-on-error) and the arch is validated/released manually.
-# On a v* tag, each job also attaches its bundle archive to the GitHub Release.
-# Code signing / notarization (Phase 5) needs paid certs — placeholders below.
+# Hosted runners build linux-x86_64 / macos-arm64 / windows-x86_64 (the `build`
+# matrix). GitHub-hosted Intel mac (macos-13) runners are unreliable, so the
+# x86_64 mac bundle is built on a SELF-HOSTED Intel mac in the separate
+# `build-macos-intel` job. That job is gated to tags + manual dispatch ONLY so
+# untrusted fork-PR code can never execute on the self-hosted machine.
+#
+# On a v* tag every job packages its bundle and attaches it to a draft GitHub
+# Release. Code signing / notarization (Phase 5) needs paid certs — see below.
 
 on:
   push:
@@ -22,18 +24,12 @@ jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
-    # A stuck/failing Intel (macos-13) job must not fail the workflow or block a
-    # tagged release; that arch is validated locally and uploaded manually.
-    continue-on-error: ${{ matrix.experimental || false }}
     permissions:
       contents: write   # attach assets to the GitHub Release (tag pushes only)
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13      # Intel x86_64
-            label: macos-x86_64
-            experimental: true
           - os: macos-14      # Apple Silicon arm64
             label: macos-arm64
           - os: ubuntu-latest # Linux x86_64
@@ -118,8 +114,68 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # Draft so the release stays hidden until the (unsigned) bundles are
-          # reviewed and the manually-built Intel asset is attached, then publish.
+          # reviewed and verified, then published manually.
           draft: true
           files: |
             bandprepare-${{ matrix.label }}-*.tar.gz
             bandprepare-${{ matrix.label }}-*.zip
+
+  # Intel mac (x86_64): GitHub-hosted macos-13 runners are unreliable, so build
+  # on a SELF-HOSTED Intel Mac (labels: self-hosted, macOS, X64). Gated to tags +
+  # manual dispatch ONLY — both require write access, so untrusted fork-PR code
+  # never executes on the self-hosted machine (this repo is public).
+  build-macos-intel:
+    name: macos-x86_64 (self-hosted)
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, macOS, X64]
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package + extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[gui,build,dev]"
+
+      - name: Run tests (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+
+      - name: Build bundle
+        run: pyinstaller --noconfirm bandprepare.spec
+
+      - name: Frozen self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          BANDPREPARE_GUI_SELFTEST: "1"
+        run: ./dist/bandprepare/bandprepare
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bandprepare-macos-x86_64
+          path: dist/bandprepare
+          if-no-files-found: error
+
+      - name: Package bundle
+        if: startsWith(github.ref, 'refs/tags/')
+        run: tar -C dist -czf "bandprepare-macos-x86_64-${{ github.ref_name }}.tar.gz" bandprepare
+
+      - name: Attach bundle to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: bandprepare-macos-x86_64-${{ github.ref_name }}.tar.gz
+
+      # Self-hosted runners do NOT reset between jobs — reclaim the ~1.4G build
+      # output and any leftover archive so the disk doesn't fill up over time.
+      - name: Clean workspace
+        if: always()
+        run: rm -rf build dist bandprepare-macos-x86_64-*.tar.gz
