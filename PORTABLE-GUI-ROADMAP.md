@@ -11,11 +11,12 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
 
 ## 🧭 현재 상태 / 다음 액션  ← 매 세션 여기부터
 
-- **현재 Phase**: Phase 0~4 완료 ✅ — **Phase 5 CI 매트릭스 그린**(linux-x86_64 ·
-  macos-arm64 · windows-x86_64 빌드+동결 self-test 통과, 커밋 `2ab50a8`; Intel mac은
-  macos-13 러너 가용성 문제로 로컬 검증). 남은 Phase 5 항목만 후속.
+- **현재 Phase**: Phase 0~4 완료 ✅ — **Phase 5 CI 4종 전부 그린**. 호스티드 러너로
+  linux-x86_64 · macos-arm64 · windows-x86_64 빌드+동결 self-test 통과, **macos-x86_64(Intel)은
+  self-hosted 러너(이 Intel iMac)**에서 빌드+동결 self-test 통과(별도 `build-macos-intel`
+  잡, 태그/수동 게이팅). `v*` 태그 시 4종 모두 draft GitHub Release에 자동 첨부.
 - **다음 액션**: torch CPU 휠 전환(Linux/Win 번들 크기↓) → macOS·Win 코드서명(유료
-  인증서 필요) → RoFormer 동봉 검증 → 태그 푸시 시 GitHub Releases 자동 첨부.
+  인증서 필요) → RoFormer 동봉 검증.
 - **PoC 빌드 플랫폼**: Intel mac x86_64 (Python 3.11, torch 2.2.2, PySide6 6.11.1).
   동결 번들 self-test 통과(시스템 ffmpeg/torch 없이 동작 입증).
 - **블로커/메모**: 실 모델 분리 end-to-end는 디스플레이+가중치 필요 → 수동 검증 권장.
@@ -129,17 +130,24 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - **알려진 한계(PoC)**: GUI 드롭다운에 RoFormer 스템 모델이 보이지만 이 번들에선 선택 시
   친절한 에러(`pip install bandprepare[roformer]`)로 degrade. RoFormer 동봉은 Phase 5.
 
-### Phase 5 — (이후) 멀티플랫폼 / 서명 / RoFormer  ◐ 부분
-- [x] GitHub Actions 빌드 매트릭스 **검증 완료** (`.github/workflows/build.yml`, 커밋 `2ab50a8`):
-      macos-13(x86_64)/macos-14(arm64)/ubuntu/windows, 각 OS에서 테스트 → `pyinstaller
-      bandprepare.spec` 빌드 → **동결 self-test** → 아티팩트 업로드. universal2 대신 arch별
-      별도 빌드(D7). Linux는 Qt 런타임 libs(apt) 설치 스텝 포함.
-      **CI 그린**: linux-x86_64 · macos-arm64 · windows-x86_64 전부 빌드+동결 self-test 통과.
+### Phase 5 — 멀티플랫폼 / 릴리스 ✅ / 서명·RoFormer ◐
+- [x] GitHub Actions 빌드 **4종 전부 그린** (`.github/workflows/build.yml`):
+      각 OS에서 테스트 → `pyinstaller bandprepare.spec` 빌드 → **동결 self-test** →
+      아티팩트 업로드. universal2 대신 arch별 별도 빌드(D7, torch가 macOS universal2 휠
+      미제공). Linux는 Qt 런타임 libs(apt) 설치 스텝 포함.
       첫 실행에서 Windows만 실패했는데 코어가 아니라 테스트(`prepare_ffmpeg_path`가 Windows에서
       `ffmpeg.exe`/PATHEXT 케이싱 `ffmpeg.EXE` 반환)였고 `2ab50a8`에서 수정.
-      ⚠️ **macos-13(Intel) 러너는 GitHub이 단계적으로 줄여 큐에서 50분+ 안 잡힘** → CI에선
-      best-effort, 대신 Intel 개발 머신에서 로컬 클린 빌드+self-test로 검증(번들 ~1.4G).
-      대안: `macos-13-large`로 교체하거나 매트릭스에서 Intel 제외(최신 Mac=arm64).
+- [x] **Intel mac은 self-hosted 러너로 자동화**: GitHub 호스티드 macos-13 러너가 불안정
+      (큐 50분+)이라, Intel iMac에 self-hosted 러너(launchd 로그인 서비스)를 등록하고
+      별도 `build-macos-intel` 잡에서 빌드. **태그/`workflow_dispatch`에서만** 동작하게
+      게이팅 → 퍼블릭 저장소의 fork-PR 코드가 개인 머신에서 실행되는 것을 차단.
+      self-hosted 함정 2개: ⓐ `actions/setup-python`의 macOS 빌드는 prefix
+      `/Users/runner/hostedtoolcache`가 박혀 있어 실패 → **uv**로 Python 3.11 provision.
+      ⓑ runsvc.sh가 `.env`를 안 읽음. 자세한 운영 메모는 세션 메모리 참조.
+- [x] **배포 채널 — GitHub Releases (태그 푸시 시 자동 첨부)**: `softprops/action-gh-release`로
+      각 잡이 번들을 아카이브(Unix tar.gz / Win zip)해 **draft** Release에 첨부. Intel도
+      self-hosted 잡이 자동 첨부 → 수동 업로드 불필요. `git tag v0.1.0 && git push origin v0.1.0`
+      후 draft 검토→publish.
 - [ ] torch **CPU 휠로 전환**(`--index-url .../whl/cpu`, Linux/Windows만) — 현재 기본 PyPI가
       CUDA 휠을 받아 번들/CI가 무거움. 크기·시간 최적화(워크플로에 주석 안내 있음).
 - [ ] macOS 코드사인 + 공증 / Windows 코드사인 — **유료 인증서 필요**(워크플로에 주석
@@ -147,11 +155,9 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - [ ] RoFormer(`numba`/`llvmlite`) 동봉 검증 → 별도/확장 번들로 추가. **보류**: numba 동결은
       `collect_all numba` + 런타임 고려가 필요하고 빌드가 무거움. 현재 번들은 RoFormer 선택 시
       친절히 degrade(에러 안내). 별도 세션에서 검증 권장.
-- [ ] 배포 채널 — 기본 **GitHub Releases**(태그 푸시 시 아티팩트). 현재 워크플로는
-      `upload-artifact`까지; 릴리스 자동 첨부는 후속.
 
-> Phase 5는 외부 의존(유료 인증서·CI 러너·numba 동결)이 커서 자율 완료 불가 항목이 있음.
-> 코드로 가능한 부분(CI 매트릭스)은 스캐폴드했고 나머지는 사유와 함께 명시.
+> 남은 Phase 5 항목(코드서명·RoFormer)은 외부 의존(유료 인증서·numba 동결)이 커서
+> 자율 완료 불가. CI 빌드/릴리스 자동화는 완료.
 
 ---
 
