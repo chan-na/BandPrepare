@@ -161,7 +161,11 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           BANDPREPARE_GUI_SELFTEST: "1"
-        run: ./dist/bandprepare/bandprepare
+        # Empty PATH so a system ffmpeg (Homebrew /usr/local/bin) can't shadow the
+        # bundled one — verifies the portable bundle the way an end user runs it.
+        run: |
+          mkdir -p "$RUNNER_TEMP/empty"
+          PATH="$RUNNER_TEMP/empty" ./dist/bandprepare/bandprepare
 
       - uses: actions/upload-artifact@v4
         with:
