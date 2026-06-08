@@ -430,9 +430,21 @@ def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
 
     registry.format_table()
     _load_config()
+
+    # BS-RoFormer is bundled (Phase 5a): the vendored model must import and
+    # build_model() must instantiate it WITHOUT falling into the missing-deps
+    # degrade path (ModelError). Instantiation only — no weights, no network.
+    # (Mel-Band stays excluded until 5b, so it is not exercised here.)
+    from ..vendor.roformer.bs_roformer import BSRoformer  # noqa: F401
+    from ..separation.roformer import _load_config as _load_roformer_config
+    from ..separation.roformer import build_model as _build_roformer
+
+    _build_roformer("bs_roformer", _load_roformer_config("bs_roformer_4stem.yaml"))
+
     print(
         f"SELFTEST OK ffmpeg={ffmpeg_path!r} "
-        f"stems={len(registry.STEM_MODELS)} drums={len(registry.DRUM_MODELS)}"
+        f"stems={len(registry.STEM_MODELS)} drums={len(registry.DRUM_MODELS)} "
+        f"roformer_bs=ok"
     )
     return 0
 

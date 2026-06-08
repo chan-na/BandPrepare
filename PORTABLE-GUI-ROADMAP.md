@@ -15,8 +15,10 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
   linux-x86_64 · macos-arm64 · windows-x86_64 빌드+동결 self-test 통과, **macos-x86_64(Intel)은
   self-hosted 러너(이 Intel iMac)**에서 빌드+동결 self-test 통과(별도 `build-macos-intel`
   잡, 태그/수동 게이팅). `v*` 태그 시 4종 모두 draft GitHub Release에 자동 첨부.
-- **다음 액션**: torch CPU 휠 전환(Linux/Win 번들 크기↓) → macOS·Win 코드서명(유료
-  인증서 필요) → RoFormer 동봉 검증.
+- **RoFormer 5a 완료** ✅: BS-RoFormer 동봉(동결 self-test `roformer_bs=ok`, 번들에
+  numba/llvmlite/librosa 없음). Mel-Band(5b)는 librosa 벤더링 후 동봉 예정.
+- **다음 액션**: RoFormer 5b(Mel-Band, `librosa.filters.mel` 벤더링) → torch CPU 휠
+  전환(Linux/Win 번들 크기↓) → macOS·Win 코드서명(유료 인증서 필요).
 - **PoC 빌드 플랫폼**: Intel mac x86_64 (Python 3.11, torch 2.2.2, PySide6 6.11.1).
   동결 번들 self-test 통과(시스템 ffmpeg/torch 없이 동작 입증).
 - **블로커/메모**: 실 모델 분리 end-to-end는 디스플레이+가중치 필요 → 수동 검증 권장.
@@ -113,8 +115,9 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
   - `collect_all`: torch, torchaudio, demucs, soundfile, imageio_ffmpeg, PySide6
   - vendor YAML config(`vendor/**/configs/*.yaml`)를 런타임 경로(`bandprepare/vendor/...`)에 `datas`로 동봉
   - hidden imports: bandprepare 백엔드(지연 임포트라 명시) + julius/lameenc/dora/yaml
-  - excludes: RoFormer **모델/deps**(`vendor.roformer.*`, numba/llvmlite/rotary-embedding/
-    beartype/einops/librosa) — D6. **단** `separation.roformer` 모듈 자체는 MDX23C가
+  - excludes: ~~RoFormer 모델/deps 전체~~ → Phase 5a에서 BS-RoFormer는 hiddenimports로
+    이동(동봉). 현재 excludes는 **Mel-Band만**(`vendor.roformer.mel_band_roformer`,
+    numba/llvmlite/librosa) — D6/5b. **단** `separation.roformer` 모듈 자체는 MDX23C가
     `_demix`를 재사용하므로 **포함**(모듈 상단은 경량, 무거운 vendor 모델은 지연 임포트)
   - `pyinstaller`는 `build` extra로 추가
 - [x] 현재 플랫폼(Intel mac x86_64)에서 빌드 — 산출물 `dist/bandprepare/` (~1.4GB)
@@ -128,8 +131,9 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
 - **완료 기준**: ✅ 패키징 고유 리스크(임포트/데이터/ffmpeg/캐시) 동결 상태에서 통과.
   실제 모델 다운로드+분리 end-to-end(≈2GB·CPU 수분, 코어 코드는 이미 테스트됨)는 디스플레이
   환경에서 수동 확인 권장.
-- **알려진 한계(PoC)**: GUI 드롭다운에 RoFormer 스템 모델이 보이지만 이 번들에선 선택 시
-  친절한 에러(`pip install bandprepare[roformer]`)로 degrade. RoFormer 동봉은 Phase 5.
+- **알려진 한계(PoC)**: ~~RoFormer 스템 모델이 선택 시 degrade~~ → Phase 5a에서 **BS-RoFormer
+  동봉 완료**(번들에서 동작). Mel-Band만 아직 degrade(`pip install bandprepare[roformer]`),
+  Phase 5b에서 librosa 벤더링으로 해소 예정.
 
 ### Phase 5 — 멀티플랫폼 / 릴리스 ✅ / 서명·RoFormer ◐
 - [x] GitHub Actions 빌드 **4종 전부 그린** (`.github/workflows/build.yml`):
@@ -153,12 +157,17 @@ CLI 층 (cli.py)              ─┼─→  pipeline.run(Options)  ← 코어는
       CUDA 휠을 받아 번들/CI가 무거움. 크기·시간 최적화(워크플로에 주석 안내 있음).
 - [ ] macOS 코드사인 + 공증 / Windows 코드사인 — **유료 인증서 필요**(워크플로에 주석
       플레이스홀더만). 미서명 시 Gatekeeper/SmartScreen 첫 실행 경고(R2).
-- [ ] RoFormer(`numba`/`llvmlite`) 동봉 검증 → 별도/확장 번들로 추가. **보류**: numba 동결은
-      `collect_all numba` + 런타임 고려가 필요하고 빌드가 무거움. 현재 번들은 RoFormer 선택 시
-      친절히 degrade(에러 안내). 별도 세션에서 검증 권장.
+- [x] **RoFormer 5a — BS-RoFormer 동봉**: numba 무관 경로. spec excludes에서 BS 모델/deps
+      (`vendor.roformer.bs_roformer`/`.attend`, rotary-embedding-torch/beartype/einops) 제거 →
+      hiddenimports로 이동, CI에 `roformer` extra 추가, 동결 self-test가 BS 모델 import+
+      `build_model('bs_roformer', …)` 인스턴스화(131.7M params)를 검증(`roformer_bs=ok`).
+      번들에 numba/llvmlite/librosa **없음** 확인. Mel-Band는 계속 degrade.
+- [ ] RoFormer 5b — Mel-Band 동봉: `mel_band_roformer.py`가 `librosa.filters.mel`만 쓰므로
+      그 함수(순수 numpy)를 `vendor/roformer/_mel.py`로 벤더링 → librosa/numba/llvmlite를
+      통째로 제거(D6 블로커 영구 해소). 수치 동등성 테스트 필요. 절차는 (삭제 전) HANDOVER-ROFORMER.md 5b 참조.
 
-> 남은 Phase 5 항목(코드서명·RoFormer)은 외부 의존(유료 인증서·numba 동결)이 커서
-> 자율 완료 불가. CI 빌드/릴리스 자동화는 완료.
+> 남은 Phase 5 항목(코드서명·RoFormer 5b)은 외부 의존(유료 인증서)·추가 작업(mel 벤더링)이
+> 남아 별도 진행. CI 빌드/릴리스 자동화와 BS-RoFormer 동봉(5a)은 완료.
 
 ---
 

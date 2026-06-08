@@ -20,11 +20,13 @@ Design notes (see PORTABLE-GUI-ROADMAP.md):
 - ffmpeg ships via imageio-ffmpeg (collected below) — no system ffmpeg needed.
   Note: imageio-ffmpeg has no ffprobe and its binary is version-named; the
   decode path in audio.py accounts for that.
-- RoFormer is intentionally EXCLUDED from this initial bundle (D6): its
-  numba/llvmlite JIT stack is awkward to freeze, and vendor/roformer eagerly
-  imports rotary-embedding-torch/einops/beartype. The bundled stem/drum models
-  (Demucs, LarsNet, DrumSep, MDX23C) need only the base torch stack. Selecting a
-  RoFormer model in this bundle therefore errors at run time (added in Phase 5).
+- BS-RoFormer IS bundled (Phase 5a): it only needs rotary-embedding-torch /
+  einops / beartype — no numba. Mel-Band RoFormer is still EXCLUDED (D6) because
+  its vendored model eagerly imports librosa (``from librosa import filters``),
+  which drags in the numba/llvmlite JIT stack that is awkward to freeze. Mel-Band
+  is enabled separately in Phase 5b by vendoring librosa.filters.mel (pure numpy)
+  to drop librosa/numba/llvmlite. Selecting Mel-Band in this bundle therefore
+  still errors at run time; BS-RoFormer and the other models work.
 """
 
 from pathlib import Path
@@ -66,9 +68,20 @@ hiddenimports += [
     "bandprepare.separation.mdx23c",
     # The MDX23C backend reuses roformer._demix (the shared chunked-overlap
     # inference engine), and roformer.py is light at module level — the heavy
-    # vendored RoFormer *models* are imported lazily inside build_model(). So the
-    # backend module is bundled; only vendor.roformer.* + its deps are excluded.
+    # vendored RoFormer *models* are imported lazily inside build_model().
     "bandprepare.separation.roformer",
+    # BS-RoFormer model + its deps (Phase 5a). build_model() imports these lazily,
+    # so name them explicitly. einops.layers.torch and packaging are pulled in by
+    # the vendored model/attend but are easy for PyInstaller to miss. Mel-Band
+    # (vendor.roformer.mel_band_roformer) + librosa stay in ``excludes`` (5b).
+    "bandprepare.vendor.roformer",
+    "bandprepare.vendor.roformer.bs_roformer",
+    "bandprepare.vendor.roformer.attend",
+    "rotary_embedding_torch",
+    "beartype",
+    "einops",
+    "einops.layers.torch",
+    "packaging",
     "bandprepare.separation.download",
     "bandprepare.vendor.larsnet",
     "bandprepare.vendor.larsnet.larsnet",
@@ -101,18 +114,16 @@ analysis_kwargs = dict(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # RoFormer stack (D6) — kept out of the initial bundle. Note: the backend
-        # module bandprepare.separation.roformer is NOT excluded (MDX23C reuses
-        # its _demix); only the vendored models and their JIT-heavy deps are.
-        "bandprepare.vendor.roformer",
-        "bandprepare.vendor.roformer.bs_roformer",
+        # Mel-Band RoFormer only (D6 / Phase 5b). BS-RoFormer is now bundled (its
+        # modules + rotary-embedding-torch/beartype/einops moved to hiddenimports).
+        # mel_band_roformer eagerly imports librosa, which drags in numba/llvmlite;
+        # keep all four out until 5b vendors librosa.filters.mel. The backend module
+        # bandprepare.separation.roformer is NOT excluded (MDX23C reuses its _demix),
+        # and its build_model() mel branch imports mel_band_roformer lazily, so
+        # excluding the model alone is enough to keep librosa out of the graph.
         "bandprepare.vendor.roformer.mel_band_roformer",
-        "bandprepare.vendor.roformer.attend",
         "numba",
         "llvmlite",
-        "rotary_embedding_torch",
-        "beartype",
-        "einops",
         "librosa",
         # Dev/test-only weight.
         "pytest",
