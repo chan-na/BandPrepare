@@ -42,6 +42,7 @@ BandPrepare를 **사용자가 어떤 의존성도 따로 설치하지 않는 포
 | D5 | 모델은 **런타임 다운로드 유지** | 번들 ~2GB 절감. 캐시는 번들 바깥(`BANDPREPARE_CACHE`→`XDG_CACHE_HOME`→`~/.cache`)이라 frozen 앱에서 정상 작동 |
 | D6 | 초기 번들은 **RoFormer 제외** | `numba/llvmlite` 런타임 JIT라 PyInstaller 동봉이 까다로움. 초기엔 Demucs+LarsNet/DrumSep/MDX23C(numba 불필요)만. RoFormer는 Phase 5에서 검증 후 추가 |
 | D7 | **플랫폼별 빌드 필수** | torch<2.3(Intel-mac 휠 마지막 2.2.2) 등으로 mac x86_64 / mac arm64 / Linux / Win 각각 빌드 |
+| D8 | 같은 onedir 번들에 **CLI 바이너리(`bandprepare-cli`) 동봉** | GUI/CLI 두 EXE가 한 COLLECT의 라이브러리(torch 등) 공유 → CLI 추가 비용은 자기 PYZ+부트스트랩뿐. Python 없이 `bandprepare-cli <곡>` 실행 |
 
 ## 3. 설계 원칙 — 코어/GUI 분리
 

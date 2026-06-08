@@ -1,13 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for BandPrepare — one-folder GUI bundle.
+"""PyInstaller spec for BandPrepare — one-folder bundle (GUI + CLI).
 
 Build:   .venv/bin/python -m PyInstaller bandprepare.spec
-Output:  dist/bandprepare/           (run dist/bandprepare/bandprepare)
+Output:  dist/bandprepare/   — two binaries over one shared set of libraries:
+           bandprepare        (GUI, primary;  run dist/bandprepare/bandprepare)
+           bandprepare-cli     (CLI;  run dist/bandprepare/bandprepare-cli <song>)
 
 Design notes (see PORTABLE-GUI-ROADMAP.md):
 - One-folder (onedir): torch and the interpreter are native code, so a single
   cross-platform binary is impossible — build per platform (D1/D7). one-file is
-  avoided because it re-extracts ~GBs to a temp dir on every launch.
+  avoided because it re-extracts ~GBs to a temp dir on every launch (worse for a
+  CLI, which is invoked repeatedly).
+- Two EXE targets share ONE COLLECT: the CLI is a second entry point built over
+  the same collected libraries (a.binaries/a.datas), so it adds only a small
+  binary (its own PYZ + bootstrap), not another ~GB of torch.
 - Model weights are NOT bundled (D5): they download on first run into a cache
   OUTSIDE the bundle (BANDPREPARE_CACHE → XDG_CACHE_HOME → ~/.cache), which is
   writable from a frozen app.
@@ -84,8 +90,9 @@ for yaml_path in (src_root / "bandprepare" / "vendor").rglob("*.yaml"):
     dest_dir = yaml_path.parent.relative_to(src_root)  # e.g. bandprepare/vendor/mdx23c/configs
     datas.append((str(yaml_path), str(dest_dir)))
 
-a = Analysis(
-    [str(project_root / "packaging" / "bandprepare_gui.py")],
+# Both entry points (GUI + CLI) analyse the same dependency graph; only the
+# top-level script differs. Share one kwargs dict so they never drift.
+analysis_kwargs = dict(
     pathex=[str(src_root)],
     binaries=binaries,
     datas=datas,
@@ -115,14 +122,18 @@ a = Analysis(
     optimize=0,
 )
 
-pyz = PYZ(a.pure)
+# GUI entry (primary) — provides the shared a.binaries/a.datas used by COLLECT.
+a = Analysis([str(project_root / "packaging" / "bandprepare_gui.py")], **analysis_kwargs)
+# CLI entry — same graph, different script. Its binaries/datas are intentionally
+# NOT passed to COLLECT (a.binaries is the shared superset); only its PYZ + the
+# bootstrap script become the small `bandprepare-cli` binary in the same folder.
+a_cli = Analysis([str(project_root / "packaging" / "bandprepare_cli.py")], **analysis_kwargs)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name="bandprepare",
+pyz = PYZ(a.pure)
+pyz_cli = PYZ(a_cli.pure)
+
+# Settings shared by both EXE targets (differ only in pyz/scripts/name).
+exe_kwargs = dict(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -137,8 +148,16 @@ exe = EXE(
     entitlements_file=None,
 )
 
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="bandprepare", **exe_kwargs)
+exe_cli = EXE(
+    pyz_cli, a_cli.scripts, [], exclude_binaries=True, name="bandprepare-cli", **exe_kwargs
+)
+
+# One COLLECT, both EXEs, one shared set of libraries → dist/bandprepare/ holding
+# `bandprepare` and `bandprepare-cli` side by side over the same _internal libs.
 coll = COLLECT(
     exe,
+    exe_cli,
     a.binaries,
     a.datas,
     strip=False,

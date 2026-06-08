@@ -84,6 +84,16 @@ jobs:
           BANDPREPARE_GUI_SELFTEST: "1"
         run: .\dist\bandprepare\bandprepare.exe
 
+      # The same bundle ships a second binary (the CLI). --version exercises its
+      # bootstrap + the shared torch stack and must exit 0 (no display/ffmpeg).
+      - name: CLI binary smoke test (Unix)
+        if: runner.os != 'Windows'
+        run: ./dist/bandprepare/bandprepare-cli --version
+
+      - name: CLI binary smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: .\dist\bandprepare\bandprepare-cli.exe --version
+
       # --- Code signing / notarization (Phase 5, needs paid certs) ------------
       # macOS: import a Developer ID cert, codesign dist/bandprepare/**, package
       #        as a .app/.dmg, then notarize with `xcrun notarytool submit`.
@@ -166,6 +176,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/empty"
           PATH="$RUNNER_TEMP/empty" ./dist/bandprepare/bandprepare
+
+      - name: CLI binary smoke test
+        run: ./dist/bandprepare/bandprepare-cli --version
 
       - uses: actions/upload-artifact@v4
         with:
