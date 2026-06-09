@@ -55,11 +55,10 @@ def build_model(model_type: str, cfg: dict):
     if model_type == "mel_band_roformer":
         try:
             from ..vendor.roformer.mel_band_roformer import MelBandRoformer
-        except Exception as exc:  # pragma: no cover - platform dependent (librosa)
+        except Exception as exc:
             raise ModelError(
-                "Mel-Band RoFormer 의존성이 없습니다. 설치: pip install 'bandprepare[roformer]'\n"
-                "  librosa(+numba/llvmlite)가 필요하며, Intel-Mac에서는 numba<0.61/llvmlite<0.44 핀이 필요합니다.\n"
-                f"  / missing deps (needs librosa): {exc}"
+                "RoFormer 의존성이 없습니다. 설치: pip install 'bandprepare[roformer]'\n"
+                f"  (rotary-embedding-torch / beartype 필요) / missing roformer deps: {exc}"
             ) from exc
         return MelBandRoformer(**kwargs)
     raise ModelError(f"알 수 없는 RoFormer 타입 / unknown roformer type: {model_type}")

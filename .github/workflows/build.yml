@@ -57,9 +57,10 @@ jobs:
           # Default PyPI wheels keep this simple. To shrink Linux/Windows bundles,
           # a CPU-only torch (--index-url https://download.pytorch.org/whl/cpu)
           # could be installed first — left as a Phase 5 size optimization.
-          # roformer extra installs BS-RoFormer deps so the bundle can include it
-          # (Phase 5a). librosa/numba also land here but spec ``excludes`` drops
-          # them from the bundle — they only need to import at build time.
+          # roformer extra installs RoFormer deps (rotary/beartype/einops) so the
+          # bundle can include both BS-RoFormer (5a) and Mel-Band (5b). Mel-Band's
+          # only librosa use (filters.mel) is vendored as pure NumPy, so no
+          # librosa/numba/llvmlite are pulled in.
           pip install -e ".[gui,build,dev,roformer]"
 
       - name: Run tests (offscreen)
@@ -160,9 +161,10 @@ jobs:
       - name: Install package + extras
         run: |
           python -m pip install --upgrade pip
-          # roformer extra installs BS-RoFormer deps so the bundle can include it
-          # (Phase 5a). librosa/numba also land here but spec ``excludes`` drops
-          # them from the bundle — they only need to import at build time.
+          # roformer extra installs RoFormer deps (rotary/beartype/einops) so the
+          # bundle can include both BS-RoFormer (5a) and Mel-Band (5b). Mel-Band's
+          # only librosa use (filters.mel) is vendored as pure NumPy, so no
+          # librosa/numba/llvmlite are pulled in.
           pip install -e ".[gui,build,dev,roformer]"
 
       - name: Run tests (offscreen)

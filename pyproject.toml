@@ -36,15 +36,14 @@ gui = ["PySide6>=6.5"]
 # Packaging the portable one-folder bundle (see bandprepare.spec). Build-time only.
 build = ["pyinstaller>=6.0"]
 # RoFormer stem models (bs_roformer, mel_band_roformer). Kept optional so the
-# base install stays lean and Intel-mac-safe. numba/llvmlite are capped because
-# newer releases drop x86_64-macOS wheels (mirroring the torch<2.3 situation).
+# base install stays lean and Intel-mac-safe. Mel-Band's only librosa use
+# (filters.mel) is vendored as pure NumPy (vendor/roformer/_mel.py), so librosa/
+# numba/llvmlite are no longer required (Phase 5b / D6) — which also keeps the
+# portable bundle off the awkward-to-freeze numba JIT stack.
 roformer = [
     "rotary-embedding-torch>=0.3.6",
     "beartype>=0.18",
     "einops>=0.8",
-    "librosa>=0.10",
-    "numba>=0.59,<0.61",
-    "llvmlite>=0.42,<0.44",
 ]
 
 [project.scripts]

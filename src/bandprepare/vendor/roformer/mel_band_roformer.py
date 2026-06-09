@@ -16,7 +16,9 @@ from rotary_embedding_torch import RotaryEmbedding
 from einops import rearrange, pack, unpack, reduce, repeat
 from einops.layers.torch import Rearrange
 
-from librosa import filters
+# Vendored pure-NumPy librosa.filters.mel — drops the librosa/numba/llvmlite
+# stack from the portable bundle (Phase 5b / D6). See _mel.py.
+from ._mel import mel as _mel_filter
 
 
 # helper functions
@@ -407,7 +409,7 @@ class MelBandRoformer(Module):
         # create mel filter bank
         # with librosa.filters.mel as in section 2 of paper
 
-        mel_filter_bank_numpy = filters.mel(sr=sample_rate, n_fft=stft_n_fft, n_mels=num_bands)
+        mel_filter_bank_numpy = _mel_filter(sr=sample_rate, n_fft=stft_n_fft, n_mels=num_bands)
 
         mel_filter_bank = torch.from_numpy(mel_filter_bank_numpy)
 
