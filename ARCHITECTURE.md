@@ -312,3 +312,50 @@ x86_64 macOS 휠을 끊었습니다(소스 빌드 실패). 그래서 `roformer` 
   검증, 레지스트리 해석, 출력 경로 계획, 장치 해석).
 - 실제 분리(가중치 다운로드·CPU 추론)는 `tests/make_sample.py`로 만든 합성 클립에
   대해 수동 E2E로 확인합니다(README "동작 확인" 참고).
+
+---
+
+## 12. 포터블 배포 & 패키징 / Portable distribution & packaging
+
+비전문가(밴드 멤버)가 ffmpeg·Python·torch를 따로 설치하지 않고 **더블클릭으로
+실행**하도록, 플랫폼별 **PyInstaller one-folder** 번들로 배포합니다. 얇은 GUI 층이
+CLI와 같은 코어(`pipeline.run`)를 호출하므로 두 진입점이 한 번들을 공유합니다.
+
+### 핵심 결정 / Decision log
+
+| # | 결정 | 사유 |
+|---|------|------|
+| D1 | 배포 = **PyInstaller one-folder**(플랫폼별) | torch+인터프리터가 네이티브라 단일 범용 바이너리 불가. one-file은 매 실행 ~GB를 temp에 다시 풀어 느림 |
+| D2 | Docker / uv-부트스트랩 **탈락** | Docker는 비전문가 GUI에 부적합, uv는 설치 시 deps를 받아 "외부 의존성 다운로드 없음" 원칙 위배 |
+| D3 | GUI = **PySide6 (Qt)** | 진짜 네이티브 앱, torch 번들 검증됨 |
+| D4 | ffmpeg = **`imageio-ffmpeg` 동봉**(LGPL) | 사용자 `brew install ffmpeg` 제거. 단 ffprobe가 없고 바이너리가 버전 접미사라, 압축 입력은 `audio._decode_with_ffmpeg`(f32le PCM, ffprobe 불필요)로 직접 디코딩(§9 참고) |
+| D5 | 모델 가중치는 **런타임 다운로드 유지** | 번들 ~2GB 절감. 캐시는 번들 바깥(`BANDPREPARE_CACHE`→`XDG_CACHE_HOME`→`~/.cache`)이라 frozen 앱에서 쓰기 가능 |
+| D6 | RoFormer **동봉**(초기엔 제외 → 해소) | `import librosa`가 numba/llvmlite JIT 스택을 끌어와 동결이 까다로웠음 → Mel-Band의 유일한 librosa 사용(`filters.mel`)을 순수 numpy로 `vendor/roformer/_mel.py`에 벤더링(§6)해 그래프에서 제거. BS·Mel **양쪽 동봉** |
+| D7 | **플랫폼별 빌드 필수** | torch가 macOS universal2 휠 미제공, Intel-mac은 torch 2.2.2가 마지막 → mac x86_64 / arm64 / Linux / Win 각각 빌드 |
+| D8 | 한 번들에 **CLI + GUI 두 바이너리** | 같은 COLLECT의 라이브러리(torch 등)를 공유 → CLI 추가 비용은 자기 PYZ+부트스트랩뿐 |
+
+### 빌드 & 릴리스
+
+- 스펙: `bandprepare.spec`(onedir, 엔트리=GUI `packaging/bandprepare_gui.py`, CLI는
+  같은 COLLECT 위 두 번째 EXE). `collect_all`로 torch/torchaudio/demucs/soundfile/
+  imageio_ffmpeg/PySide6, vendor YAML config를 `datas`로 동봉, RoFormer 모델·deps는
+  `hiddenimports`(지연 import라 명시).
+- CI: `.github/workflows/build.yml`가 4종을 빌드 — linux-x86_64 · macos-arm64 ·
+  windows-x86_64는 GitHub-호스티드, **macos-x86_64(Intel)은 self-hosted 러너**(별도
+  `build-macos-intel` 잡, 태그/수동 디스패치 게이팅). 각 잡이 **동결 self-test**
+  (`BANDPREPARE_GUI_SELFTEST=1`, 오프스크린)로 임포트·동봉 ffmpeg·캐시 쓰기·RoFormer
+  인스턴스화를 검증한 뒤, `v*` 태그면 번들을 draft GitHub Release에 첨부.
+
+### 코드서명 / Gatekeeper · SmartScreen (미적용)
+
+코드서명·공증은 **유료 인증서**가 필요해 보류 상태입니다. 미서명이어도 배포·실행은
+가능하나 첫 실행 경고가 뜹니다(README "다운로드한 릴리스 첫 실행" 참고):
+
+- **macOS**: arm64는 PyInstaller가 자동 ad-hoc 서명해 로컬 실행은 되지만, 다운로드
+  격리(`com.apple.quarantine`)가 붙으면 Gatekeeper가 차단 → 시스템 설정 → 개인정보
+  보호 및 보안 → "확인 없이 열기", 또는 `xattr -dr com.apple.quarantine <앱>`.
+- **Windows**: SmartScreen "추가 정보 → 실행". 일부 백신이 PyInstaller 바이너리를 오탐.
+- **Linux**: 코드서명 개념 없음 — 경고 없이 실행.
+
+> torch는 Linux/Windows에서 기본 PyPI(CUDA) 휠을 받아 번들이 무겁습니다. CPU 휠로
+> 줄이면 GPU 가속이 빠지므로 **CUDA 경로 유지를 위해 전환하지 않습니다**.

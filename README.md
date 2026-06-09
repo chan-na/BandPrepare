@@ -579,12 +579,25 @@ pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
   설치 없이 `./dist/bandprepare/bandprepare-cli <곡>` 로 CLI를 쓸 수 있습니다(옵션은 동일).
 - **ffmpeg는 번들에 동봉**(`imageio-ffmpeg`)되어 시스템 설치가 필요 없습니다.
 - **모델 가중치만** 첫 실행 시 캐시(`~/.cache/bandprepare`, 번들 바깥)로 다운로드됩니다.
-- 초기 번들은 **RoFormer 모델을 제외**합니다(numba/llvmlite). GUI에서 선택하면 설치 안내
-  메시지로 안전하게 처리됩니다.
+- **RoFormer 모델(BS-RoFormer · Mel-Band)도 번들에 동봉**됩니다. Mel-Band의 유일한
+  librosa 사용을 순수 numpy로 벤더링해 numba/llvmlite 없이 동결됩니다(설계: ARCHITECTURE.md §12 D6).
 - 번들이 잘 묶였는지 디스플레이 없이 점검:
   `BANDPREPARE_GUI_SELFTEST=1 QT_QPA_PLATFORM=offscreen ./dist/bandprepare/bandprepare`
 - 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml`. 코드 서명/공증은 유료 인증서가
-  필요합니다. 전체 계획은 [PORTABLE-GUI-ROADMAP.md](PORTABLE-GUI-ROADMAP.md) 참고.
+  필요해 미적용 상태입니다(아래 "다운로드한 릴리스 첫 실행" 참고). 배포·패키징 설계 결정은
+  [ARCHITECTURE.md](ARCHITECTURE.md) §12 참고.
+
+### 다운로드한 릴리스 첫 실행 (서명 경고 우회)
+
+GitHub Releases에서 받은 번들은 **코드서명이 안 돼 있어** 첫 실행 시 OS 경고가 뜹니다.
+실행 자체는 가능하며, 한 번만 아래로 허용하면 됩니다(다음 실행부터는 경고 없음).
+
+- **macOS**: 다운로드 격리 때문에 Gatekeeper가 막습니다. 둘 중 하나로 허용:
+  - 시스템 설정 → **개인정보 보호 및 보안** → 아래 **"확인 없이 열기"** 클릭, 또는
+  - 터미널에서 격리 속성 제거 — `xattr -dr com.apple.quarantine /받은경로/bandprepare`
+- **Windows**: SmartScreen "Windows의 PC 보호" 화면 → **추가 정보 → 실행**. (일부 백신이
+  PyInstaller 바이너리를 오탐할 수 있으니 신뢰 목록에 추가.)
+- **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare` 후 실행.
 
 ### 구조
 

@@ -1,6 +1,6 @@
 name: build
 
-# Per-platform PyInstaller bundles (PORTABLE-GUI-ROADMAP.md). torch is native and
+# Per-platform PyInstaller bundles (see ARCHITECTURE.md §12). torch is native and
 # has no macOS universal2 wheel, so a single universal binary is impossible — we
 # build one bundle per OS/arch (D1/D7).
 #

@@ -3,8 +3,8 @@
 ``mel_band_roformer.py`` only needs the Mel filter bank from librosa
 (``filters.mel(sr=..., n_fft=..., n_mels=...)``). Importing ``librosa`` for that
 one call drags in the numba/llvmlite JIT stack, which is awkward to freeze into
-the portable PyInstaller bundle (see PORTABLE-GUI-ROADMAP.md decision D6 / Phase
-5b). ``librosa.filters.mel`` and its helpers are pure NumPy, so we vendor them
+the portable PyInstaller bundle (see ARCHITECTURE.md §12 decision D6 / §6).
+``librosa.filters.mel`` and its helpers are pure NumPy, so we vendor them
 here verbatim to drop librosa/numba/llvmlite entirely.
 
 Source: librosa 0.11.0 (``librosa/filters.py``, ``librosa/core/convert.py``).

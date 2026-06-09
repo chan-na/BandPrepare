@@ -6,7 +6,7 @@ Output:  dist/bandprepare/   — two binaries over one shared set of libraries:
            bandprepare        (GUI, primary;  run dist/bandprepare/bandprepare)
            bandprepare-cli     (CLI;  run dist/bandprepare/bandprepare-cli <song>)
 
-Design notes (see PORTABLE-GUI-ROADMAP.md):
+Design notes (see ARCHITECTURE.md §12):
 - One-folder (onedir): torch and the interpreter are native code, so a single
   cross-platform binary is impossible — build per platform (D1/D7). one-file is
   avoided because it re-extracts ~GBs to a temp dir on every launch (worse for a
