@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import audio
+from .._frozen_mp import configure_multiprocessing
 from .._ssl_certs import configure_ssl_cert_file
 from ..cli import default_output_dir
 from ..device import VALID_CHOICES
@@ -449,11 +450,16 @@ def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
     # SSL_CERT_FILE is set by configure_ssl_cert_file() in main() before this
     # runs; surfacing it proves the frozen bundle can verify TLS for downloads.
     ssl_cert = os.environ.get("SSL_CERT_FILE")
+    # configure_multiprocessing() should have replaced tqdm's mp lock with a
+    # plain threading lock (no mp_lock attr) so no duplicate process spawns.
+    tqdm_lock = getattr(sys.modules.get("tqdm"), "tqdm", None)
+    tqdm_lock = getattr(tqdm_lock, "_lock", None) if tqdm_lock else None
+    mp_guard = "ok" if (tqdm_lock is not None and not hasattr(tqdm_lock, "mp_lock")) else "off"
     print(
         f"SELFTEST OK ffmpeg={ffmpeg_path!r} "
         f"stems={len(registry.STEM_MODELS)} drums={len(registry.DRUM_MODELS)} "
         f"roformer_bs=ok roformer_mel=ok "
-        f"ssl_cert={ssl_cert!r}"
+        f"ssl_cert={ssl_cert!r} mp_guard={mp_guard}"
     )
     return 0
 
@@ -462,6 +468,8 @@ def main() -> int:
     # Frozen bundles ship their own OpenSSL with no usable CA path; point it at
     # the bundled certifi store so weight downloads don't fail TLS verification.
     configure_ssl_cert_file()
+    # Stop tqdm's mp lock from spawning a duplicate (empty) GUI window.
+    configure_multiprocessing()
     app = QApplication.instance() or QApplication(sys.argv)
     # Expose the bundled ffmpeg on PATH once, before any separation runs.
     ffmpeg_path = audio.prepare_ffmpeg_path()

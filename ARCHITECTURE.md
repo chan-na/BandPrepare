@@ -386,3 +386,15 @@ PyInstaller가 동봉하는 OpenSSL의 기본 인증서 경로(OPENSSLDIR)는 **
 (`_internal/certifi/cacert.pem`), 진입점에서 `_ssl_certs.configure_ssl_cert_file()`이
 **동결 시에만** `SSL_CERT_FILE`/`SSL_CERT_DIR`를 그쪽으로 export합니다(사용자 지정값은 존중).
 동결 self-test 출력의 `ssl_cert=...`로 CI에서 검증합니다.
+
+### 동결 번들의 중복 프로세스 방지 (tqdm × multiprocessing)
+
+`tqdm`(demucs·LarsNet 진행률, 다운로드 바)은 첫 바 생성 시 **`multiprocessing.RLock`**을
+만드는데(`TqdmDefaultWriteLock`), 이게 세마포어를 등록해 `resource_tracker` 프로세스를
+띄웁니다. macOS/Windows는 시작 방식이 `spawn`이라 그 프로세스(및 풀 워커)가 **동결 바이너리를
+재실행**하고, 동결 진입점은 진짜 파이썬 인터프리터가 아니라 `main()`을 다시 돌려 — **빈 GUI 창이
+하나 더** 뜹니다(CLI는 `unrecognized arguments: -B -S -I -c`로 드러남). 멀티프로세스 tqdm을
+쓰지 않으므로 `_frozen_mp.configure_multiprocessing()`이 **동결 시** tqdm에 평범한 스레드
+락(`threading.RLock`)을 미리 지정 → mp 프리미티브가 안 생겨 spawn 자체가 없어집니다
+(`multiprocessing.freeze_support()`도 함께 호출 — Windows 동결 자식용). self-test 출력의
+`mp_guard=ok`로 CI에서 검증합니다.

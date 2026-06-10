@@ -606,3 +606,38 @@ def test_configure_ssl_cert_file_respects_user_override(monkeypatch):
     monkeypatch.setenv("SSL_CERT_FILE", "/custom/ca.pem")
     assert _ssl_certs.configure_ssl_cert_file() == "/custom/ca.pem"
     assert os.environ["SSL_CERT_FILE"] == "/custom/ca.pem"
+
+
+# --- frozen-bundle duplicate-process guard ---------------------------------
+# Regression for v0.1.0: a frozen run spawned a do-nothing second process (an
+# empty GUI window) because tqdm builds a multiprocessing RLock that starts the
+# resource_tracker, which re-executes the bundle. configure_multiprocessing()
+# gives tqdm a plain threading lock so no mp primitive — hence no spawn.
+
+
+def test_configure_multiprocessing_noop_when_not_frozen(monkeypatch):
+    from bandprepare import _frozen_mp
+
+    monkeypatch.delattr(_frozen_mp.sys, "frozen", raising=False)
+    _frozen_mp.configure_multiprocessing()  # must not raise
+
+
+def test_configure_multiprocessing_sets_non_mp_tqdm_lock(monkeypatch):
+    tqdm_mod = pytest.importorskip("tqdm")
+    from bandprepare import _frozen_mp
+
+    cls = tqdm_mod.tqdm
+    had_lock = hasattr(cls, "_lock")
+    saved = getattr(cls, "_lock", None)
+    try:
+        monkeypatch.setattr(_frozen_mp.sys, "frozen", True, raising=False)
+        _frozen_mp.configure_multiprocessing()
+        lock = cls._lock
+        assert lock is not None
+        # TqdmDefaultWriteLock (the mp one) exposes .mp_lock; a threading lock doesn't.
+        assert not hasattr(lock, "mp_lock")
+    finally:
+        if had_lock:
+            cls._lock = saved
+        elif hasattr(cls, "_lock"):
+            del cls._lock
