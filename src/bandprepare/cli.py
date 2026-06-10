@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from ._ssl_certs import configure_ssl_cert_file
 from .audio import SUPPORTED_FORMATS, prepare_ffmpeg_path
 from .device import VALID_CHOICES
 from .errors import BandPrepareError, EXIT_INTERRUPTED, EXIT_USAGE
@@ -99,6 +100,9 @@ def default_output_dir(input_path: str) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Frozen bundles ship their own OpenSSL with no usable CA path; point it at
+    # the bundled certifi store so weight downloads don't fail TLS verification.
+    configure_ssl_cert_file()
     parser = build_parser()
     args = parser.parse_args(argv)
     setup_logging(args.verbose)

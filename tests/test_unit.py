@@ -7,6 +7,7 @@ downloads large model weights and is slow on CPU.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -568,3 +569,40 @@ def test_mainwindow_collect_options_requires_input():
     win = MainWindow()
     win._input_edit.setText("")
     assert win._collect_options() is None
+
+
+# --- frozen-bundle SSL CA wiring -------------------------------------------
+# Regression for v0.1.0: a downloaded macOS bundle failed every weight download
+# with CERTIFICATE_VERIFY_FAILED because the frozen OpenSSL had no usable CA
+# path. configure_ssl_cert_file() points SSL_CERT_FILE at the bundled certifi.
+
+
+def test_configure_ssl_cert_file_noop_when_not_frozen(monkeypatch):
+    from bandprepare import _ssl_certs
+
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.delattr(_ssl_certs.sys, "frozen", raising=False)
+    assert _ssl_certs.configure_ssl_cert_file() is None
+    assert "SSL_CERT_FILE" not in os.environ
+
+
+def test_configure_ssl_cert_file_sets_certifi_when_frozen(monkeypatch):
+    certifi = pytest.importorskip("certifi")
+    from bandprepare import _ssl_certs
+
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+    monkeypatch.setattr(_ssl_certs.sys, "frozen", True, raising=False)
+    result = _ssl_certs.configure_ssl_cert_file()
+    assert result == certifi.where()
+    assert os.environ["SSL_CERT_FILE"] == certifi.where()
+    assert os.environ["SSL_CERT_DIR"] == os.path.dirname(certifi.where())
+
+
+def test_configure_ssl_cert_file_respects_user_override(monkeypatch):
+    from bandprepare import _ssl_certs
+
+    monkeypatch.setattr(_ssl_certs.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("SSL_CERT_FILE", "/custom/ca.pem")
+    assert _ssl_certs.configure_ssl_cert_file() == "/custom/ca.pem"
+    assert os.environ["SSL_CERT_FILE"] == "/custom/ca.pem"

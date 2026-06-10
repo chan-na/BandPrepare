@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import audio
+from .._ssl_certs import configure_ssl_cert_file
 from ..cli import default_output_dir
 from ..device import VALID_CHOICES
 from ..pipeline import Options
@@ -445,15 +446,22 @@ def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
     _build_roformer("bs_roformer", _load_roformer_config("bs_roformer_4stem.yaml"))
     _build_roformer("mel_band_roformer", _load_roformer_config("mel_band_vocals_kj.yaml"))
 
+    # SSL_CERT_FILE is set by configure_ssl_cert_file() in main() before this
+    # runs; surfacing it proves the frozen bundle can verify TLS for downloads.
+    ssl_cert = os.environ.get("SSL_CERT_FILE")
     print(
         f"SELFTEST OK ffmpeg={ffmpeg_path!r} "
         f"stems={len(registry.STEM_MODELS)} drums={len(registry.DRUM_MODELS)} "
-        f"roformer_bs=ok roformer_mel=ok"
+        f"roformer_bs=ok roformer_mel=ok "
+        f"ssl_cert={ssl_cert!r}"
     )
     return 0
 
 
 def main() -> int:
+    # Frozen bundles ship their own OpenSSL with no usable CA path; point it at
+    # the bundled certifi store so weight downloads don't fail TLS verification.
+    configure_ssl_cert_file()
     app = QApplication.instance() or QApplication(sys.argv)
     # Expose the bundled ffmpeg on PATH once, before any separation runs.
     ffmpeg_path = audio.prepare_ffmpeg_path()

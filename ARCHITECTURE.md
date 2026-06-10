@@ -352,10 +352,37 @@ CLI와 같은 코어(`pipeline.run`)를 호출하므로 두 진입점이 한 번
 가능하나 첫 실행 경고가 뜹니다(README "다운로드한 릴리스 첫 실행" 참고):
 
 - **macOS**: arm64는 PyInstaller가 자동 ad-hoc 서명해 로컬 실행은 되지만, 다운로드
-  격리(`com.apple.quarantine`)가 붙으면 Gatekeeper가 차단 → 시스템 설정 → 개인정보
-  보호 및 보안 → "확인 없이 열기", 또는 `xattr -dr com.apple.quarantine <앱>`.
+  격리(`com.apple.quarantine`)가 붙으면 차단됩니다. onedir 번들은 `.app`이 아니라 폴더
+  안에 수백 개의 `.dylib`/framework가 들어있고 **각각 격리**되어, 메인 실행 후
+  `_internal/Python` 등 하위 라이브러리 로드에서 `library load disallowed by system
+  policy`로 실패합니다. 시스템 설정의 "확인 없이 열기"는 더블클릭한 **그 파일 하나**의
+  격리만 풀어 하위 dylib엔 안 통하므로, **`xattr -dr com.apple.quarantine <받은폴더>`**
+  (재귀 `-r`)로 트리 전체 격리를 제거하는 것이 신뢰 가능한 방법입니다.
 - **Windows**: SmartScreen "추가 정보 → 실행". 일부 백신이 PyInstaller 바이너리를 오탐.
 - **Linux**: 코드서명 개념 없음 — 경고 없이 실행.
 
-> torch는 Linux/Windows에서 기본 PyPI(CUDA) 휠을 받아 번들이 무겁습니다. CPU 휠로
-> 줄이면 GPU 가속이 빠지므로 **CUDA 경로 유지를 위해 전환하지 않습니다**.
+### torch 휠: 포터블 번들은 CPU, GPU는 pip 경로 (D9)
+
+초기엔 GPU 가속 유지를 위해 Linux/Windows도 기본 PyPI(CUDA) 휠을 번들했으나, **Linux
+CUDA 번들의 `.tar.gz`가 GitHub Release의 자산당 2 GiB 한도를 초과**(raw ~3.5 GB, CUDA
+런타임이 ~2 GB)해 릴리스 첨부가 실패했습니다. CUDA는 `libtorch_cuda.so`에 컴파일돼 있어
+모델 가중치처럼 런타임에 lazy 다운로드해 붙일 수 없고(frozen 프로세스가 이미 번들 torch를
+import한 상태), 번들 자체도 한도를 못 맞춥니다.
+
+→ **포터블 번들은 Linux/Windows 모두 CPU 전용 torch**(`--index-url .../whl/cpu`)로 빌드해
+플랫폼당 ~500 MB로 통일합니다(2 GiB 통과, Windows는 기존 기본 휠도 사실상 CPU라 일관). CI의
+`Install CPU-only torch (Linux/Windows)` 스텝이 pyproject 핀과 동일 버전으로 선설치하므로
+editable 설치가 torch를 건드리지 않습니다. macOS는 CUDA 휠이 없어(MPS/CPU) 기본 그대로.
+
+**GPU(CUDA)는 pip 경로로 제공**: 사용자가 `pip install torch --index-url .../whl/cu121`로
+CUDA 빌드를 직접 설치하면 됩니다(필요할 때만 CUDA 런타임 다운로드 — frozen 번들이 아닌 실제
+venv라 정상 동작). Linux/Windows + NVIDIA 전용. README "🚀 GPU 가속 (CUDA)" 참고.
+
+### 동결 번들의 TLS 인증서 (certifi)
+
+PyInstaller가 동봉하는 OpenSSL의 기본 인증서 경로(OPENSSLDIR)는 **빌드 머신**을 가리켜
+사용자 머신엔 없습니다. 그대로 두면 모델 가중치 HTTPS 다운로드가 네트워크와 무관하게
+`CERTIFICATE_VERIFY_FAILED`로 실패합니다. `certifi`는 이미 번들에 포함되므로
+(`_internal/certifi/cacert.pem`), 진입점에서 `_ssl_certs.configure_ssl_cert_file()`이
+**동결 시에만** `SSL_CERT_FILE`/`SSL_CERT_DIR`를 그쪽으로 export합니다(사용자 지정값은 존중).
+동결 self-test 출력의 `ssl_cert=...`로 CI에서 검증합니다.

@@ -281,6 +281,28 @@ bandprepare 내곡.mp3 --no-drum-split
 bandprepare 내곡.mp3 --no-drum-wiener
 ```
 
+### 🚀 GPU 가속 (CUDA) — Linux / Windows
+
+다운로드한 **포터블 릴리스 번들은 CPU 전용 torch**를 씁니다(용량을 작게 유지 — 어디서나
+설치 없이 바로 실행). NVIDIA GPU로 몇 배 빠르게 돌리려면 **pip로 CUDA 빌드 torch를 직접
+설치**하면 됩니다(필요할 때만 CUDA 런타임을 내려받는 방식). NVIDIA 드라이버가 설치돼 있어야
+합니다.
+
+```bash
+# 1) CUDA 빌드 torch 설치 (드라이버에 맞는 CUDA 버전 선택 — 예: cu121 = CUDA 12.1)
+pip install "torch>=2.1.0,<2.3.0" "torchaudio>=2.1.0,<2.3.0" \
+  --index-url https://download.pytorch.org/whl/cu121
+
+# 2) BandPrepare 설치 (RoFormer 모델까지 쓰려면 ".[roformer]")
+pip install -e .
+
+# 3) GPU로 실행
+bandprepare 내곡.mp3 --device cuda
+```
+
+> 💡 **macOS**는 CUDA가 없습니다. Apple Silicon은 `--device mps` 로 GPU(Metal)를 씁니다
+> (Intel Mac은 MPS가 느려 일부러 CPU 사용). CUDA는 **Linux / Windows + NVIDIA GPU** 전용입니다.
+
 ### 🔁 다시 실행하면?
 
 이미 결과 파일이 다 있으면 자동으로 건너뜁니다. 다시 만들려면 `--overwrite` 를 붙이세요.
@@ -299,6 +321,7 @@ bandprepare 내곡.mp3 --overwrite
 | 너무 느림 | GPU가 없으면 정상입니다. `--no-drum-split` 로 2단계를 생략하거나 짧은 구간으로 시험 |
 | 첫 실행이 멈춘 듯함 | 모델(수백 MB) 내려받는 중일 수 있음. 네트워크 확인 후 기다리기 |
 | 드럼 모델(562MB) 다운로드 실패 | 네트워크/Google Drive 일시 문제. 다시 실행하면 이어집니다 |
+| 모델 다운로드가 `CERTIFICATE_VERIFY_FAILED` (SSL)로 실패 | 최신 릴리스는 자동 해결됨. 구버전 번들이면 임시로 앞에 `SSL_CERT_FILE="<받은폴더>/_internal/certifi/cacert.pem"` 를 붙여 실행 |
 | Apple Silicon Mac인데 CPU로만 돎 | `--device mps` 로 강제 가능. (Intel Mac은 MPS가 느려서 일부러 CPU 사용) |
 
 오류 메시지는 **한국어/영어 둘 다** 표시되고, 상황별 종료 코드를 반환합니다(맨 아래 표 참고).
@@ -592,9 +615,14 @@ pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
 GitHub Releases에서 받은 번들은 **코드서명이 안 돼 있어** 첫 실행 시 OS 경고가 뜹니다.
 실행 자체는 가능하며, 한 번만 아래로 허용하면 됩니다(다음 실행부터는 경고 없음).
 
-- **macOS**: 다운로드 격리 때문에 Gatekeeper가 막습니다. 둘 중 하나로 허용:
-  - 시스템 설정 → **개인정보 보호 및 보안** → 아래 **"확인 없이 열기"** 클릭, 또는
-  - 터미널에서 격리 속성 제거 — `xattr -dr com.apple.quarantine /받은경로/bandprepare`
+- **macOS**: 다운로드 격리 때문에 막힙니다. 터미널에서 **격리 속성을 재귀로 제거**하세요:
+  ```bash
+  xattr -dr com.apple.quarantine /받은경로/bandprepare
+  ```
+  > ⚠️ `_internal/Python` 같은 **하위 라이브러리 로드 차단**(`library load disallowed by
+  > system policy`) 에러는 시스템 설정의 **"확인 없이 열기"** 만으론 안 풀립니다 — 그 버튼은
+  > 더블클릭한 파일 하나만 허용하고, 폴더 안 수백 개의 `.dylib`는 그대로 격리되기 때문입니다.
+  > 위 `xattr -dr`(재귀)로 폴더 전체를 한 번에 풀어야 확실합니다.
 - **Windows**: SmartScreen "Windows의 PC 보호" 화면 → **추가 정보 → 실행**. (일부 백신이
   PyInstaller 바이너리를 오탐할 수 있으니 신뢰 목록에 추가.)
 - **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare` 후 실행.
