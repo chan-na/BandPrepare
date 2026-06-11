@@ -8,7 +8,102 @@
 > workarounds, and source layout. For internal design see
 > [ARCHITECTURE.md](../ARCHITECTURE.md).
 
+> 💡 대부분의 사용자는 [Releases](../../../releases)의 **포터블 앱**을 받아 쓰면 됩니다
+> ([CLI](CLI.md) / [GUI](GUI.md) 가이드). 이 문서는 **소스에서 직접 빌드·설치**하거나
+> **GPU(CUDA) 가속**·**포터블 번들 빌드**가 필요한 경우를 위한 정본입니다.
+
 ---
+
+## 소스에서 설치 / Install from source
+
+소스에서 설치하면 최신 코드를 쓰거나 GPU(CUDA) torch를 직접 고를 수 있습니다.
+
+### 준비물
+
+| 필요한 것 | 조건 |
+|-----------|------|
+| **Python** | `>=3.10` (python.org / `brew` / pyenv 등) |
+| **uv** *(선택)* | 빠른 설치 도구 — 없으면 표준 `pip` 사용 |
+
+### 가상환경 + 설치
+
+```bash
+# uv (권장)
+uv venv --python 3.11 .venv
+source .venv/bin/activate
+uv pip install -e .
+
+# uv가 없다면 (표준 pip)
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+설치가 끝나면 다음이 보이면 성공입니다:
+
+```bash
+bandprepare --version
+# bandprepare 0.1.0
+```
+
+> 📌 새 터미널을 열 때마다 `source .venv/bin/activate` 를 먼저 실행해야 명령을 쓸 수
+> 있습니다(또는 `.venv/bin/bandprepare` 처럼 전체 경로 사용).
+
+### ⚠️ 명령 이름 — 소스 설치 vs 포터블 번들 (역전 주의)
+
+같은 이름 `bandprepare` 가 설치 방식에 따라 **다른 프로그램**을 가리킵니다:
+
+| 실행 방식 | CLI 명령 | GUI 명령 |
+|-----------|----------|----------|
+| **소스/pip 설치** (이 문서) | `bandprepare` | `bandprepare-gui` |
+| **포터블 번들** (릴리스 다운로드) | `bandprepare-cli` | `bandprepare` (더블클릭) |
+
+- 즉 **소스 설치에서 `bandprepare` 는 CLI**, GUI는 `bandprepare-gui` 입니다.
+  (`pyproject.toml [project.scripts]` 정의.)
+- 반대로 포터블 번들에서 접미사 없는 `bandprepare` 는 **GUI**이고 CLI는 `bandprepare-cli`
+  입니다(번들은 GUI를 더블클릭 진입점으로 두기 때문 — `bandprepare.spec`).
+- 사용자 가이드([CLI](CLI.md)/[GUI](GUI.md))의 명령 예시는 **포터블 번들 기준**입니다.
+
+### 선택 extra (필요할 때만)
+
+```bash
+uv pip install -e ".[gui]"        # 데스크톱 GUI(PySide6) → bandprepare-gui
+uv pip install -e ".[roformer]"   # RoFormer 모델(bs_roformer / mel_band_roformer)
+uv pip install -e ".[build]"      # 포터블 번들 빌드용 PyInstaller
+uv pip install -e ".[dev]"        # 테스트용 pytest
+# 한 번에: uv pip install -e ".[gui,roformer,build,dev]"
+```
+
+- **포터블 앱에는 GUI·RoFormer가 이미 포함**되어 있으므로, 위 extra는 *소스 설치에서만*
+  필요합니다.
+- `.[roformer]` 가 설치하는 것은 `rotary-embedding-torch`, `beartype`, `einops` **뿐**입니다.
+  Mel-Band RoFormer의 유일한 librosa 사용(`filters.mel`)을 순수 NumPy로 벤더링해
+  `librosa`/`numba`/`llvmlite` 는 더 이상 필요 없습니다(설계: [ARCHITECTURE.md](../ARCHITECTURE.md) §12 D6).
+
+> 아키텍처와 설계 배경(특히 호환성 때문에 audio-separator를 쓰지 않은 이유)은
+> [ARCHITECTURE.md](../ARCHITECTURE.md) 를 참고하세요.
+
+## GPU 가속 (CUDA) — 소스 설치
+
+포터블 앱의 **Linux/Windows 번들은 CPU 전용 torch**라 CUDA 가속을 쓸 수 없습니다(용량을
+작게 유지하려는 의도). NVIDIA GPU로 몇 배 빠르게 돌리려면 **소스에서 CUDA 빌드 torch를
+직접 설치**하세요. NVIDIA 드라이버가 미리 설치돼 있어야 합니다.
+
+```bash
+# 1) CUDA 빌드 torch 설치 (드라이버에 맞는 CUDA 버전 선택 — 예: cu121 = CUDA 12.1)
+pip install "torch>=2.1.0,<2.3.0" "torchaudio>=2.1.0,<2.3.0" \
+  --index-url https://download.pytorch.org/whl/cu121
+
+# 2) BandPrepare 설치 (이미 만족된 torch는 건드리지 않음)
+pip install -e .
+
+# 3) GPU로 실행 (소스 설치에선 CLI 명령이 bandprepare)
+bandprepare 내곡.mp3 --device cuda
+```
+
+> 💡 **macOS**는 CUDA가 없습니다. Apple Silicon은 `--device mps` 로 GPU(Metal)를 씁니다
+> (포터블 macOS 앱도 동일). Intel Mac은 MPS가 느려 `auto` 가 일부러 CPU를 선택합니다.
+> CUDA는 **Linux / Windows + NVIDIA GPU** 전용입니다.
 
 ## 개발 / Development
 
