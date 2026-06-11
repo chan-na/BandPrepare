@@ -34,17 +34,27 @@
 
 | 내 컴퓨터 | 받을 파일 |
 |-----------|-----------|
-| **맥 (애플 실리콘 · M1/M2/M3…)** | `bandprepare-macos-arm64-<버전>.tar.gz` |
-| **맥 (인텔)** | `bandprepare-macos-x86_64-<버전>.tar.gz` |
+| **맥 (애플 실리콘 · M1/M2/M3…)** | `bandprepare-macos-arm64-<버전>.zip` |
+| **맥 (인텔)** | `bandprepare-macos-x86_64-<버전>.zip` |
 | **리눅스 (x86_64)** | `bandprepare-linux-x86_64-<버전>.tar.gz` |
 | **윈도우 (x86_64)** | `bandprepare-windows-x86_64-<버전>.zip` |
+
+> 🍎 macOS는 **`BandPrepare.app`**(GUI 앱) 하나로 배포됩니다. CLI도 그 앱 안에 함께 들어 있어요.
 
 > 📌 릴리스는 검토를 위해 **비공개(draft)로 먼저 올라옵니다.** 자산이 아직 안 보이면
 > 공개 전일 수 있습니다 — 이럴 땐 [소스에서 설치](DEVELOPMENT.md)해 쓰세요.
 
 ### 2) 압축 풀기
 
-압축을 풀면 **`bandprepare/` 폴더 하나**가 나오고, 그 안에 실행 파일 두 개가 있습니다:
+**macOS**: 압축을 풀면 **`BandPrepare.app`** 이 나옵니다. CLI는 그 앱 패키지 안에 있습니다 —
+`BandPrepare.app/Contents/MacOS/bandprepare-cli`. 매번 긴 경로를 치지 않도록 앱 옆에 **단축
+링크**를 하나 만들어 두면 이 가이드의 `./bandprepare-cli ...` 예시를 그대로 쓸 수 있습니다:
+
+```bash
+ln -s "BandPrepare.app/Contents/MacOS/bandprepare-cli" bandprepare-cli
+```
+
+**Linux·Windows**: 압축을 풀면 **`bandprepare/` 폴더 하나**가 나오고, 그 안에 실행 파일 두 개가 있습니다:
 
 ```
 bandprepare/
@@ -53,18 +63,19 @@ bandprepare/
 └── _internal/           ← 내부 라이브러리 (건드리지 않음)
 ```
 
-> ⚠️ **이름 주의**: 포터블 번들에서 접미사 **없는** `bandprepare` 는 **GUI**입니다.
-> 터미널용 CLI는 `bandprepare-cli` 예요. (윈도우는 각각 `bandprepare.exe`,
-> `bandprepare-cli.exe`.)
+> ⚠️ **이름 주의**: 접미사 **없는** `bandprepare` 는 **GUI**, 터미널용 CLI는 `bandprepare-cli` 예요.
+> (윈도우는 각각 `bandprepare.exe`, `bandprepare-cli.exe`. macOS는 위 단축 링크 `bandprepare-cli`
+> 또는 `BandPrepare.app/Contents/MacOS/bandprepare-cli`.)
 
 ### 3) 첫 실행 경고 우회 (한 번만)
 
-받은 앱은 코드서명이 안 돼 있어 첫 실행 때 OS가 막을 수 있습니다. 한 번만 풀어 주면 됩니다.
+받은 앱은 정식 서명/공증이 안 돼 있어 첫 실행 때 OS가 막을 수 있습니다. 한 번만 풀어 주면 됩니다.
 
-- **macOS**: 다운로드 격리 때문에 막힙니다. 터미널에서 **격리 속성을 재귀로 제거**하세요
-  (폴더 안 수백 개 라이브러리까지 한 번에 풀어야 합니다):
+- **macOS**: 다운로드 격리 때문에 막힙니다. **`BandPrepare.app` 을 우클릭 → 열기 → 열기** 하면
+  앱 전체가 한 번에 허용됩니다(ad-hoc 서명된 단일 번들이라, 폴더 시절처럼 개별 라이브러리까지
+  풀 필요가 없습니다). 터미널을 선호하면:
   ```bash
-  xattr -dr com.apple.quarantine /받은경로/bandprepare
+  xattr -dr com.apple.quarantine BandPrepare.app
   ```
 - **Windows**: SmartScreen "Windows의 PC 보호" → **추가 정보 → 실행**. (백신이 오탐하면 신뢰 목록에 추가.)
 - **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare/bandprepare-cli`.
@@ -75,10 +86,14 @@ bandprepare/
 
 ## STEP 3. 곡 분리하기 (첫 실행)
 
-압축을 푼 **`bandprepare/` 폴더 안에서** CLI를 실행합니다. 가장 기본 사용법 —
-곡 파일 경로만 주면 됩니다.
+압축을 푼 위치에서 CLI를 실행합니다. 가장 기본 사용법 — 곡 파일 경로만 주면 됩니다.
 
 ```bash
+# macOS: BandPrepare.app 과 단축 링크를 만든 폴더에서
+cd /받은경로
+./bandprepare-cli 내곡.mp3          # 링크 없이 쓰려면 BandPrepare.app/Contents/MacOS/bandprepare-cli
+
+# Linux·Windows: 압축 푼 bandprepare 폴더 안에서
 cd /받은경로/bandprepare
 ./bandprepare-cli 내곡.mp3          # 윈도우: bandprepare-cli.exe 내곡.mp3
 ```
@@ -303,8 +318,8 @@ bandprepare-cli 내곡.mp3 --overwrite
 
 | 증상 | 원인 / 해결 |
 |------|-------------|
-| `command not found` / `bandprepare-cli: No such file` | 압축 푼 `bandprepare/` 폴더 안에서 `./bandprepare-cli` 로 실행하거나 전체 경로 사용. (폴더 밖에선 그냥 `bandprepare-cli` 만으론 안 됩니다.) |
-| macOS: `library load disallowed by system policy` 또는 앱이 안 열림 | 다운로드 격리 때문 → `xattr -dr com.apple.quarantine /받은경로/bandprepare` (재귀 필수, STEP 2-3 참고) |
+| `command not found` / `bandprepare-cli: No such file` | Linux·Windows는 압축 푼 `bandprepare/` 폴더 안에서 `./bandprepare-cli` 로 실행하거나 전체 경로 사용. macOS는 단축 링크(STEP 2-2)나 `BandPrepare.app/Contents/MacOS/bandprepare-cli`. |
+| macOS: `library load disallowed by system policy` 또는 앱이 안 열림 | 다운로드 격리 때문 → `BandPrepare.app` **우클릭 → 열기**, 또는 `xattr -dr com.apple.quarantine BandPrepare.app` (STEP 2-3 참고) |
 | Linux/macOS: `Permission denied` | 실행 권한 부여 → `chmod +x ./bandprepare-cli` |
 | 너무 느림 | GPU가 없으면 정상입니다. `--no-drum-split` 로 2단계를 생략하거나 짧은 구간으로 시험 |
 | 첫 실행이 멈춘 듯함 | 모델(수백 MB) 내려받는 중일 수 있음. 네트워크 확인 후 기다리기 |

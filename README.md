@@ -18,15 +18,19 @@
 
 1. [Releases](../../releases)에서 내 OS에 맞는 파일을 받습니다.
    `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-x86_64` · `windows-x86_64`
-2. 압축을 풀면 **`bandprepare/` 폴더 하나**가 나옵니다(안에 실행 파일 2개).
-3. 🖱 **마우스로**: `bandprepare` 를 **더블클릭** → [GUI 가이드](docs/GUI.md)
-   🖥 **터미널로**: `./bandprepare/bandprepare-cli 내곡.mp3` → [CLI 가이드](docs/CLI.md)
+2. 압축을 풀면 — **macOS는 `BandPrepare.app`**(더블클릭으로 바로 실행), **Linux·Windows는
+   `bandprepare/` 폴더**(안에 실행 파일 2개)가 나옵니다. macOS 앱 안에도 CLI가 함께 들어 있습니다.
+3. 🖱 **마우스로**: macOS는 `BandPrepare.app`, Linux·Windows는 폴더 안 `bandprepare` 를
+   **더블클릭** → [GUI 가이드](docs/GUI.md)
+   🖥 **터미널로**: `./bandprepare/bandprepare-cli 내곡.mp3`
+   (macOS는 `BandPrepare.app/Contents/MacOS/bandprepare-cli`) → [CLI 가이드](docs/CLI.md)
 
 결과는 `./output/내곡/` 폴더에 생깁니다.
 
-> ⚠️ 받은 앱은 코드서명이 안 돼 있어 **첫 실행 때 OS 경고**가 한 번 뜹니다(허용하면 다음부터는 없음).
-> macOS는 `xattr -dr com.apple.quarantine <받은폴더>/bandprepare` 가 필요합니다 —
-> 우회법은 각 가이드와 [개발 가이드](docs/DEVELOPMENT.md#다운로드한-릴리스-첫-실행-서명-경고-우회)에 있습니다.
+> ⚠️ 받은 앱은 정식 서명/공증이 안 돼 있어 **첫 실행 때 OS 경고**가 한 번 뜹니다(허용하면 다음부터는 없음).
+> macOS는 `BandPrepare.app` 을 **우클릭 → 열기**(또는 `xattr -dr com.apple.quarantine BandPrepare.app`),
+> Windows는 SmartScreen → 추가 정보 → 실행. 자세히는 각 가이드와
+> [개발 가이드](docs/DEVELOPMENT.md#다운로드한-릴리스-첫-실행-서명-경고-우회)에 있습니다.
 > 첫 실행에는 모델 가중치를 받느라 인터넷이 필요합니다(이후 캐시됨).
 
 > 🛠 릴리스가 아직 비공개(draft)이거나 **소스에서 직접 빌드·설치**하고 싶다면

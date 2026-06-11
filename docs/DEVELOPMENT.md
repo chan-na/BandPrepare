@@ -130,6 +130,7 @@ ffmpeg·Python·torch를 따로 설치하지 않고 **더블클릭으로 실행*
 ```bash
 uv pip install -e ".[gui,build]"          # PySide6 + pyinstaller
 pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
+                                          #   macOS는 dist/BandPrepare.app 도 함께 생성
 ./dist/bandprepare/bandprepare            # 실행 (GUI)
 ./dist/bandprepare/bandprepare-cli 내곡.mp3   # 실행 (CLI)
 ```
@@ -143,26 +144,33 @@ pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
   librosa 사용을 순수 numpy로 벤더링해 numba/llvmlite 없이 동결됩니다(설계: [ARCHITECTURE.md](../ARCHITECTURE.md) §12 D6).
 - 번들이 잘 묶였는지 디스플레이 없이 점검:
   `BANDPREPARE_GUI_SELFTEST=1 QT_QPA_PLATFORM=offscreen ./dist/bandprepare/bandprepare`
-- 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml`. 코드 서명/공증은 유료 인증서가
-  필요해 미적용 상태입니다(아래 "다운로드한 릴리스 첫 실행" 참고). 배포·패키징 설계 결정은
-  [ARCHITECTURE.md](../ARCHITECTURE.md) §12 참고.
+- **macOS**: 같은 빌드가 onedir와 함께 **`dist/BandPrepare.app`**(windowed GUI 번들)도 만듭니다.
+  `open dist/BandPrepare.app`(또는 더블클릭)하면 **터미널 없이** 창이 바로 뜹니다(spec의 `BUNDLE`,
+  `sys.platform == "darwin"` 한정). CI는 macOS에서 이 `.app`을 릴리스 자산으로 패키징하고
+  (Linux·Windows는 onedir 폴더), CLI는 `.app/Contents/MacOS/bandprepare-cli` 에 함께 들어갑니다.
+- 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml`. macOS `.app`·바이너리는 PyInstaller가
+  **ad-hoc 서명**(무료, 인증서 불필요)해 실행은 되지만, Gatekeeper의 "확인되지 않은 개발자" 경고를
+  없애려면 **유료 Developer ID 서명 + 공증(notarize)** 이 필요합니다(미적용 — 아래 "다운로드한 릴리스
+  첫 실행" 참고). 배포·패키징 설계 결정은 [ARCHITECTURE.md](../ARCHITECTURE.md) §12 참고.
 
 ## 다운로드한 릴리스 첫 실행 (서명 경고 우회)
 
-GitHub Releases에서 받은 번들은 **코드서명이 안 돼 있어** 첫 실행 시 OS 경고가 뜹니다.
-실행 자체는 가능하며, 한 번만 아래로 허용하면 됩니다(다음 실행부터는 경고 없음).
+GitHub Releases에서 받은 번들은 **정식 서명/공증이 안 돼 있어**(ad-hoc 서명까지만) 첫 실행 시
+OS 경고가 뜹니다. 실행 자체는 가능하며, 한 번만 아래로 허용하면 됩니다(다음 실행부터는 경고 없음).
 
-- **macOS**: 다운로드 격리 때문에 막힙니다. 터미널에서 **격리 속성을 재귀로 제거**하세요:
+- **macOS** (`BandPrepare.app`): 다운로드 격리 + "확인되지 않은 개발자" 때문에 막힙니다.
+  **앱을 우클릭 → 열기 → 열기** 하면 됩니다 — `.app` 은 ad-hoc 서명된 **단일 번들**이라 이 한 번의
+  허용으로 내부 라이브러리까지 전부 풀립니다. 터미널을 선호하면:
   ```bash
-  xattr -dr com.apple.quarantine /받은경로/bandprepare
+  xattr -dr com.apple.quarantine BandPrepare.app
   ```
-  > ⚠️ `_internal/Python` 같은 **하위 라이브러리 로드 차단**(`library load disallowed by
-  > system policy`) 에러는 시스템 설정의 **"확인 없이 열기"** 만으론 안 풀립니다 — 그 버튼은
-  > 더블클릭한 파일 하나만 허용하고, 폴더 안 수백 개의 `.dylib`는 그대로 격리되기 때문입니다.
-  > 위 `xattr -dr`(재귀)로 폴더 전체를 한 번에 풀어야 확실합니다.
+  > ℹ️ 예전 onedir **폴더** 번들은 폴더 안 수백 개의 `.dylib`가 각각 격리돼, 시스템 설정의
+  > **"확인 없이 열기"**(더블클릭한 파일 하나만 허용)로는 `library load disallowed by system
+  > policy` 가 안 풀리고 `xattr -dr`(재귀)가 필요했습니다. windowed `.app` 으로 바꾼 뒤로는
+  > 우클릭 → 열기 한 번이면 번들 전체가 풀립니다.
 - **Windows**: SmartScreen "Windows의 PC 보호" 화면 → **추가 정보 → 실행**. (일부 백신이
   PyInstaller 바이너리를 오탐할 수 있으니 신뢰 목록에 추가.)
-- **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare` 후 실행.
+- **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare/bandprepare` 후 실행.
 
 ## 구조
 

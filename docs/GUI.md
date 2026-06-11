@@ -15,14 +15,18 @@
 1. [Releases](../../../releases)에서 내 OS용 파일을 받습니다(자세한 파일 이름·표는
    [CLI 가이드 STEP 2](CLI.md#step-2-받아서-준비하기-포터블-앱) 참고).
    `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-x86_64` · `windows-x86_64`
-2. 압축을 풀면 **`bandprepare/` 폴더**가 나옵니다.
-3. **첫 실행 경고 우회**(한 번만): macOS는 `xattr -dr com.apple.quarantine <받은폴더>/bandprepare`,
-   Windows는 SmartScreen → 추가 정보 → 실행. (자세히 →
-   [개발 가이드](DEVELOPMENT.md#다운로드한-릴리스-첫-실행-서명-경고-우회))
-4. 폴더 안의 **`bandprepare` 를 더블클릭**하면 창이 뜹니다.
+2. 압축을 풀면 — **macOS는 `BandPrepare.app`**, **Linux·Windows는 `bandprepare/` 폴더**가 나옵니다.
+3. **첫 실행 경고 우회**(한 번만):
+   - **macOS**: `BandPrepare.app` 을 **우클릭 → 열기 → 열기**. (또는 터미널에서
+     `xattr -dr com.apple.quarantine BandPrepare.app`.)
+   - **Windows**: SmartScreen "Windows의 PC 보호" → **추가 정보 → 실행**.
+   - 자세히 → [개발 가이드](DEVELOPMENT.md#다운로드한-릴리스-첫-실행-서명-경고-우회)
+4. **실행**: macOS는 `BandPrepare.app` 을 **더블클릭**하면 터미널 없이 창이 바로 뜹니다.
+   Linux·Windows는 폴더 안 **`bandprepare` 를 더블클릭**하면 창이 뜹니다.
 
-> ⚠️ **이름 주의**: 포터블 번들에서 접미사 **없는** `bandprepare` 가 **GUI**입니다
-> (더블클릭하는 것). `bandprepare-cli` 는 터미널용 CLI예요. (윈도우는 `bandprepare.exe`.)
+> ⚠️ **이름 주의**: macOS에서 더블클릭하는 건 **`BandPrepare.app`** 입니다(CLI는 앱 안
+> `Contents/MacOS/bandprepare-cli`). Linux·Windows 폴더에서는 접미사 **없는** `bandprepare` 가
+> **GUI**(더블클릭), `bandprepare-cli` 가 터미널용 CLI예요. (윈도우는 `bandprepare.exe`.)
 > 📌 릴리스는 비공개(draft)로 먼저 올라옵니다 — 자산이 안 보이면 공개 전일 수 있습니다.
 > 소스에서 직접 빌드해 실행하려면 [개발 가이드](DEVELOPMENT.md#소스에서-설치--install-from-source)를 참고하세요.
 

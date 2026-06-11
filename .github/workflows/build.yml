@@ -11,7 +11,9 @@ name: build
 # untrusted fork-PR code can never execute on the self-hosted machine.
 #
 # On a v* tag every job packages its bundle and attaches it to a draft GitHub
-# Release. Code signing / notarization (Phase 5) needs paid certs — see below.
+# Release. macOS ships a windowed BandPrepare.app (PyInstaller ad-hoc signs it
+# for free, so Finder launches it straight to a window — no Terminal); Linux and
+# Windows ship the onedir folder. Notarization still needs paid certs — see below.
 
 on:
   push:
@@ -109,13 +111,26 @@ jobs:
         if: runner.os == 'Windows'
         run: .\dist\bandprepare\bandprepare-cli.exe --version
 
-      # --- Code signing / notarization (Phase 5, needs paid certs) ------------
-      # macOS: import a Developer ID cert, codesign dist/bandprepare/**, package
-      #        as a .app/.dmg, then notarize with `xcrun notarytool submit`.
+      # --- Code signing / notarization ----------------------------------------
+      # macOS bundles are already ad-hoc signed by PyInstaller (free, no certs) —
+      # enough for the .app to launch via Finder (Gatekeeper still shows the
+      # one-time "unidentified developer" prompt; right-click → Open clears it).
+      # To remove that prompt for distribution: import a Developer ID cert,
+      # re-codesign the .app, then notarize with `xcrun notarytool submit` (paid).
       # Windows: signtool sign /fd sha256 /tr <timestamp> dist\bandprepare\*.exe
-      # Gate these on repository secrets; skipped here.
+      # Gate the paid steps on repository secrets; skipped here.
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload bundle artifact (macOS — .app)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandprepare-${{ matrix.label }}
+          path: dist/BandPrepare.app
+          if-no-files-found: error
+
+      - name: Upload bundle artifact (Linux/Windows — onedir)
+        if: runner.os != 'macOS'
+        uses: actions/upload-artifact@v4
         with:
           name: bandprepare-${{ matrix.label }}
           path: dist/bandprepare
@@ -126,8 +141,14 @@ jobs:
       # GitHub Release. tar.gz on Unix preserves symlinks + exec bits (PyInstaller
       # bundles have both); Compress-Archive (zip) is fine on Windows. Each matrix
       # job appends its own asset to the release that the action auto-creates.
-      - name: Package bundle (Unix)
-        if: runner.os != 'Windows' && startsWith(github.ref, 'refs/tags/')
+      - name: Package bundle (macOS — .app via ditto)
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
+        # ditto preserves the .app's symlinks + ad-hoc code signature and yields a
+        # .zip Finder/Safari auto-expand; --keepParent keeps BandPrepare.app as root.
+        run: ditto -c -k --keepParent dist/BandPrepare.app "bandprepare-${{ matrix.label }}-${{ github.ref_name }}.zip"
+
+      - name: Package bundle (Linux)
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/')
         run: tar -C dist -czf "bandprepare-${{ matrix.label }}-${{ github.ref_name }}.tar.gz" bandprepare
 
       - name: Package bundle (Windows)
@@ -202,22 +223,24 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bandprepare-macos-x86_64
-          path: dist/bandprepare
+          path: dist/BandPrepare.app
           if-no-files-found: error
 
       - name: Package bundle
         if: startsWith(github.ref, 'refs/tags/')
-        run: tar -C dist -czf "bandprepare-macos-x86_64-${{ github.ref_name }}.tar.gz" bandprepare
+        # ditto preserves the .app's symlinks + ad-hoc code signature (see the
+        # macOS packaging note in the `build` job above).
+        run: ditto -c -k --keepParent dist/BandPrepare.app "bandprepare-macos-x86_64-${{ github.ref_name }}.zip"
 
       - name: Attach bundle to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: bandprepare-macos-x86_64-${{ github.ref_name }}.tar.gz
+          files: bandprepare-macos-x86_64-${{ github.ref_name }}.zip
 
       # Self-hosted runners do NOT reset between jobs — reclaim the ~1.4G build
       # output and any leftover archive so the disk doesn't fill up over time.
       - name: Clean workspace
         if: always()
-        run: rm -rf build dist bandprepare-macos-x86_64-*.tar.gz
+        run: rm -rf build dist bandprepare-macos-x86_64-*.zip
