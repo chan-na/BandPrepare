@@ -55,7 +55,7 @@ jobs:
       # PyPI torch wheel on Linux bundles the full CUDA runtime (~2 GB), which
       # pushes the release .tar.gz over GitHub's 2 GiB per-asset limit; CPU wheels
       # keep every platform's bundle ~500 MB. GPU users install CUDA torch via pip
-      # instead (see README "GPU 가속"). Installing it first (matching pyproject's
+      # instead (see docs/CLI.md "GPU 가속"). Installing it first (matching pyproject's
       # pin) means the editable install below leaves torch untouched. macOS has no
       # CUDA wheels (MPS/CPU only), so it keeps the default wheels.
       - name: Install CPU-only torch (Linux/Windows)

@@ -1,8 +1,9 @@
 """Fast unit tests that do not require model weights.
 
 Run with: pytest -q
-The heavy end-to-end separation is exercised manually (see README) because it
-downloads large model weights and is slow on CPU.
+The heavy end-to-end separation is exercised manually (see docs/REFERENCE.md
+"동작 확인 / Verified run") because it downloads large model weights and is slow
+on CPU.
 """
 
 from __future__ import annotations
