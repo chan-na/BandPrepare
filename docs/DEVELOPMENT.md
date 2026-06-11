@@ -8,7 +8,102 @@
 > workarounds, and source layout. For internal design see
 > [ARCHITECTURE.md](../ARCHITECTURE.md).
 
+> 💡 대부분의 사용자는 [Releases](../../../releases)의 **포터블 앱**을 받아 쓰면 됩니다
+> ([CLI](CLI.md) / [GUI](GUI.md) 가이드). 이 문서는 **소스에서 직접 빌드·설치**하거나
+> **GPU(CUDA) 가속**·**포터블 번들 빌드**가 필요한 경우를 위한 정본입니다.
+
 ---
+
+## 소스에서 설치 / Install from source
+
+소스에서 설치하면 최신 코드를 쓰거나 GPU(CUDA) torch를 직접 고를 수 있습니다.
+
+### 준비물
+
+| 필요한 것 | 조건 |
+|-----------|------|
+| **Python** | `>=3.10` (python.org / `brew` / pyenv 등) |
+| **uv** *(선택)* | 빠른 설치 도구 — 없으면 표준 `pip` 사용 |
+
+### 가상환경 + 설치
+
+```bash
+# uv (권장)
+uv venv --python 3.11 .venv
+source .venv/bin/activate
+uv pip install -e .
+
+# uv가 없다면 (표준 pip)
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+설치가 끝나면 다음이 보이면 성공입니다:
+
+```bash
+bandprepare --version
+# bandprepare 0.1.0
+```
+
+> 📌 새 터미널을 열 때마다 `source .venv/bin/activate` 를 먼저 실행해야 명령을 쓸 수
+> 있습니다(또는 `.venv/bin/bandprepare` 처럼 전체 경로 사용).
+
+### ⚠️ 명령 이름 — 소스 설치 vs 포터블 번들 (역전 주의)
+
+같은 이름 `bandprepare` 가 설치 방식에 따라 **다른 프로그램**을 가리킵니다:
+
+| 실행 방식 | CLI 명령 | GUI 명령 |
+|-----------|----------|----------|
+| **소스/pip 설치** (이 문서) | `bandprepare` | `bandprepare-gui` |
+| **포터블 번들** (릴리스 다운로드) | `bandprepare-cli` | `bandprepare` (더블클릭) |
+
+- 즉 **소스 설치에서 `bandprepare` 는 CLI**, GUI는 `bandprepare-gui` 입니다.
+  (`pyproject.toml [project.scripts]` 정의.)
+- 반대로 포터블 번들에서 접미사 없는 `bandprepare` 는 **GUI**이고 CLI는 `bandprepare-cli`
+  입니다(번들은 GUI를 더블클릭 진입점으로 두기 때문 — `bandprepare.spec`).
+- 사용자 가이드([CLI](CLI.md)/[GUI](GUI.md))의 명령 예시는 **포터블 번들 기준**입니다.
+
+### 선택 extra (필요할 때만)
+
+```bash
+uv pip install -e ".[gui]"        # 데스크톱 GUI(PySide6) → bandprepare-gui
+uv pip install -e ".[roformer]"   # RoFormer 모델(bs_roformer / mel_band_roformer)
+uv pip install -e ".[build]"      # 포터블 번들 빌드용 PyInstaller
+uv pip install -e ".[dev]"        # 테스트용 pytest
+# 한 번에: uv pip install -e ".[gui,roformer,build,dev]"
+```
+
+- **포터블 앱에는 GUI·RoFormer가 이미 포함**되어 있으므로, 위 extra는 *소스 설치에서만*
+  필요합니다.
+- `.[roformer]` 가 설치하는 것은 `rotary-embedding-torch`, `beartype`, `einops` **뿐**입니다.
+  Mel-Band RoFormer의 유일한 librosa 사용(`filters.mel`)을 순수 NumPy로 벤더링해
+  `librosa`/`numba`/`llvmlite` 는 더 이상 필요 없습니다(설계: [ARCHITECTURE.md](../ARCHITECTURE.md) §12 D6).
+
+> 아키텍처와 설계 배경(특히 호환성 때문에 audio-separator를 쓰지 않은 이유)은
+> [ARCHITECTURE.md](../ARCHITECTURE.md) 를 참고하세요.
+
+## GPU 가속 (CUDA) — 소스 설치
+
+포터블 앱의 **Linux/Windows 번들은 CPU 전용 torch**라 CUDA 가속을 쓸 수 없습니다(용량을
+작게 유지하려는 의도). NVIDIA GPU로 몇 배 빠르게 돌리려면 **소스에서 CUDA 빌드 torch를
+직접 설치**하세요. NVIDIA 드라이버가 미리 설치돼 있어야 합니다.
+
+```bash
+# 1) CUDA 빌드 torch 설치 (드라이버에 맞는 CUDA 버전 선택 — 예: cu121 = CUDA 12.1)
+pip install "torch>=2.1.0,<2.3.0" "torchaudio>=2.1.0,<2.3.0" \
+  --index-url https://download.pytorch.org/whl/cu121
+
+# 2) BandPrepare 설치 (이미 만족된 torch는 건드리지 않음)
+pip install -e .
+
+# 3) GPU로 실행 (소스 설치에선 CLI 명령이 bandprepare)
+bandprepare 내곡.mp3 --device cuda
+```
+
+> 💡 **macOS**는 CUDA가 없습니다. Apple Silicon은 `--device mps` 로 GPU(Metal)를 씁니다
+> (포터블 macOS 앱도 동일). Intel Mac은 MPS가 느려 `auto` 가 일부러 CPU를 선택합니다.
+> CUDA는 **Linux / Windows + NVIDIA GPU** 전용입니다.
 
 ## 개발 / Development
 
@@ -35,6 +130,7 @@ ffmpeg·Python·torch를 따로 설치하지 않고 **더블클릭으로 실행*
 ```bash
 uv pip install -e ".[gui,build]"          # PySide6 + pyinstaller
 pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
+                                          #   macOS는 dist/BandPrepare.app 도 함께 생성
 ./dist/bandprepare/bandprepare            # 실행 (GUI)
 ./dist/bandprepare/bandprepare-cli 내곡.mp3   # 실행 (CLI)
 ```
@@ -48,26 +144,33 @@ pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
   librosa 사용을 순수 numpy로 벤더링해 numba/llvmlite 없이 동결됩니다(설계: [ARCHITECTURE.md](../ARCHITECTURE.md) §12 D6).
 - 번들이 잘 묶였는지 디스플레이 없이 점검:
   `BANDPREPARE_GUI_SELFTEST=1 QT_QPA_PLATFORM=offscreen ./dist/bandprepare/bandprepare`
-- 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml`. 코드 서명/공증은 유료 인증서가
-  필요해 미적용 상태입니다(아래 "다운로드한 릴리스 첫 실행" 참고). 배포·패키징 설계 결정은
-  [ARCHITECTURE.md](../ARCHITECTURE.md) §12 참고.
+- **macOS**: 같은 빌드가 onedir와 함께 **`dist/BandPrepare.app`**(windowed GUI 번들)도 만듭니다.
+  `open dist/BandPrepare.app`(또는 더블클릭)하면 **터미널 없이** 창이 바로 뜹니다(spec의 `BUNDLE`,
+  `sys.platform == "darwin"` 한정). CI는 macOS에서 이 `.app`을 릴리스 자산으로 패키징하고
+  (Linux·Windows는 onedir 폴더), CLI는 `.app/Contents/MacOS/bandprepare-cli` 에 함께 들어갑니다.
+- 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml`. macOS `.app`·바이너리는 PyInstaller가
+  **ad-hoc 서명**(무료, 인증서 불필요)해 실행은 되지만, Gatekeeper의 "확인되지 않은 개발자" 경고를
+  없애려면 **유료 Developer ID 서명 + 공증(notarize)** 이 필요합니다(미적용 — 아래 "다운로드한 릴리스
+  첫 실행" 참고). 배포·패키징 설계 결정은 [ARCHITECTURE.md](../ARCHITECTURE.md) §12 참고.
 
 ## 다운로드한 릴리스 첫 실행 (서명 경고 우회)
 
-GitHub Releases에서 받은 번들은 **코드서명이 안 돼 있어** 첫 실행 시 OS 경고가 뜹니다.
-실행 자체는 가능하며, 한 번만 아래로 허용하면 됩니다(다음 실행부터는 경고 없음).
+GitHub Releases에서 받은 번들은 **정식 서명/공증이 안 돼 있어**(ad-hoc 서명까지만) 첫 실행 시
+OS 경고가 뜹니다. 실행 자체는 가능하며, 한 번만 아래로 허용하면 됩니다(다음 실행부터는 경고 없음).
 
-- **macOS**: 다운로드 격리 때문에 막힙니다. 터미널에서 **격리 속성을 재귀로 제거**하세요:
+- **macOS** (`BandPrepare.app`): 다운로드 격리 + "확인되지 않은 개발자" 때문에 막힙니다.
+  **앱을 우클릭 → 열기 → 열기** 하면 됩니다 — `.app` 은 ad-hoc 서명된 **단일 번들**이라 이 한 번의
+  허용으로 내부 라이브러리까지 전부 풀립니다. 터미널을 선호하면:
   ```bash
-  xattr -dr com.apple.quarantine /받은경로/bandprepare
+  xattr -dr com.apple.quarantine BandPrepare.app
   ```
-  > ⚠️ `_internal/Python` 같은 **하위 라이브러리 로드 차단**(`library load disallowed by
-  > system policy`) 에러는 시스템 설정의 **"확인 없이 열기"** 만으론 안 풀립니다 — 그 버튼은
-  > 더블클릭한 파일 하나만 허용하고, 폴더 안 수백 개의 `.dylib`는 그대로 격리되기 때문입니다.
-  > 위 `xattr -dr`(재귀)로 폴더 전체를 한 번에 풀어야 확실합니다.
+  > ℹ️ 예전 onedir **폴더** 번들은 폴더 안 수백 개의 `.dylib`가 각각 격리돼, 시스템 설정의
+  > **"확인 없이 열기"**(더블클릭한 파일 하나만 허용)로는 `library load disallowed by system
+  > policy` 가 안 풀리고 `xattr -dr`(재귀)가 필요했습니다. windowed `.app` 으로 바꾼 뒤로는
+  > 우클릭 → 열기 한 번이면 번들 전체가 풀립니다.
 - **Windows**: SmartScreen "Windows의 PC 보호" 화면 → **추가 정보 → 실행**. (일부 백신이
   PyInstaller 바이너리를 오탐할 수 있으니 신뢰 목록에 추가.)
-- **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare` 후 실행.
+- **Linux**: 경고 없음. 필요 시 `chmod +x ./bandprepare/bandprepare` 후 실행.
 
 ## 구조
 

@@ -14,18 +14,27 @@
 
 ## ⚡ 한눈에 (TL;DR)
 
-```bash
-# 1) 설치 (최초 1회)
-uv venv --python 3.11 .venv && source .venv/bin/activate && uv pip install -e .
+**설치 없이** 포터블 앱을 받아 바로 씁니다 — Python·ffmpeg·torch·RoFormer 모델이 모두 들어 있습니다.
 
-# 2) 곡 분리
-bandprepare 내곡.mp3
+1. [Releases](../../releases)에서 내 OS에 맞는 파일을 받습니다.
+   `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-x86_64` · `windows-x86_64`
+2. 압축을 풀면 — **macOS는 `BandPrepare.app`**(더블클릭으로 바로 실행), **Linux·Windows는
+   `bandprepare/` 폴더**(안에 실행 파일 2개)가 나옵니다. macOS 앱 안에도 CLI가 함께 들어 있습니다.
+3. 🖱 **마우스로**: macOS는 `BandPrepare.app`, Linux·Windows는 폴더 안 `bandprepare` 를
+   **더블클릭** → [GUI 가이드](docs/GUI.md)
+   🖥 **터미널로**: `./bandprepare/bandprepare-cli 내곡.mp3`
+   (macOS는 `BandPrepare.app/Contents/MacOS/bandprepare-cli`) → [CLI 가이드](docs/CLI.md)
 
-# 3) 결과는 ./output/내곡/ 폴더에 생김
-```
+결과는 `./output/내곡/` 폴더에 생깁니다.
 
-> 🖱 **터미널이 어렵다면?** 마우스로 쓰는 **GUI**도 있습니다 → [GUI 가이드](docs/GUI.md).
-> 설치 없이 더블클릭으로 쓰는 **포터블 앱**은 [Releases](../../releases)에서 받으세요.
+> ⚠️ 받은 앱은 정식 서명/공증이 안 돼 있어 **첫 실행 때 OS 경고**가 한 번 뜹니다(허용하면 다음부터는 없음).
+> macOS는 `BandPrepare.app` 을 **우클릭 → 열기**(또는 `xattr -dr com.apple.quarantine BandPrepare.app`),
+> Windows는 SmartScreen → 추가 정보 → 실행. 자세히는 각 가이드와
+> [개발 가이드](docs/DEVELOPMENT.md#다운로드한-릴리스-첫-실행-서명-경고-우회)에 있습니다.
+> 첫 실행에는 모델 가중치를 받느라 인터넷이 필요합니다(이후 캐시됨).
+
+> 🛠 릴리스가 아직 비공개(draft)이거나 **소스에서 직접 빌드·설치**하고 싶다면
+> → [개발 가이드](docs/DEVELOPMENT.md).
 
 ---
 
@@ -33,10 +42,10 @@ bandprepare 내곡.mp3
 
 | 이런 분께 | 문서 |
 |-----------|------|
-| 🖥 **터미널로 쓰는 분** — 설치 · 첫 실행 · 연습 레시피 · GPU 가속 · FAQ | [docs/CLI.md](docs/CLI.md) |
-| 🖱 **마우스로 쓰는 분** — 드래그 앤 드롭 데스크톱 GUI | [docs/GUI.md](docs/GUI.md) |
+| 🖥 **터미널로 쓰는 분** — 포터블 CLI(`bandprepare-cli`) 받기 · 첫 실행 · 연습 레시피 · FAQ | [docs/CLI.md](docs/CLI.md) |
+| 🖱 **마우스로 쓰는 분** — 포터블 앱(`bandprepare`) 더블클릭 · 드래그 앤 드롭 | [docs/GUI.md](docs/GUI.md) |
 | 📚 **레퍼런스** — 의존성 · 옵션 전체 · 파이프라인 · 출력 구조 · 라이선스 · 한계 · 성능 · 종료 코드 | [docs/REFERENCE.md](docs/REFERENCE.md) |
-| 🛠 **개발자** — 빌드 · 테스트 · 포터블 앱 빌드 · 서명 경고 우회 · 소스 구조 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
+| 🛠 **개발자** — 소스 설치 · 빌드 · 테스트 · 포터블 앱 빌드 · GPU(CUDA) · 서명 경고 우회 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 | 🏗 **내부 구조 · 설계 결정** | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 ---

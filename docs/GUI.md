@@ -1,26 +1,34 @@
 # BandPrepare — 그래픽 인터페이스(GUI) 사용 가이드
 
-터미널이 익숙하지 않다면 데스크톱 GUI로도 쓸 수 있습니다. 곡을 끌어다 놓고 버튼만
-누르면 됩니다. GUI는 [CLI](CLI.md)와 **같은 코어**를 쓰므로 결과물·모델·옵션은 동일합니다.
+터미널이 익숙하지 않다면 데스크톱 GUI로도 쓸 수 있습니다. **설치 없이** 받아서 곡을
+끌어다 놓고 버튼만 누르면 됩니다. GUI는 [CLI](CLI.md)와 **같은 코어**를 쓰므로
+결과물·모델·옵션은 동일합니다.
 
 > A desktop GUI that wraps the same core as the [CLI](CLI.md): same outputs,
-> same models, same options — just drag, drop and click.
+> same models, same options — just drag, drop and click. Download the portable
+> bundle (no Python/ffmpeg/torch install needed) and double-click `bandprepare`.
 
 ---
 
-## 설치 & 실행
+## 받아서 실행하기 (포터블 앱)
 
-```bash
-# GUI 의존성(PySide6) 설치 — 최초 1회
-uv pip install -e ".[gui]"     # 또는: pip install -e ".[gui]"
+1. [Releases](../../../releases)에서 내 OS용 파일을 받습니다(자세한 파일 이름·표는
+   [CLI 가이드 STEP 2](CLI.md#step-2-받아서-준비하기-포터블-앱) 참고).
+   `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-x86_64` · `windows-x86_64`
+2. 압축을 풀면 — **macOS는 `BandPrepare.app`**, **Linux·Windows는 `bandprepare/` 폴더**가 나옵니다.
+3. **첫 실행 경고 우회**(한 번만):
+   - **macOS**: `BandPrepare.app` 을 **우클릭 → 열기 → 열기**. (또는 터미널에서
+     `xattr -dr com.apple.quarantine BandPrepare.app`.)
+   - **Windows**: SmartScreen "Windows의 PC 보호" → **추가 정보 → 실행**.
+   - 자세히 → [개발 가이드](DEVELOPMENT.md#다운로드한-릴리스-첫-실행-서명-경고-우회)
+4. **실행**: macOS는 `BandPrepare.app` 을 **더블클릭**하면 터미널 없이 창이 바로 뜹니다.
+   Linux·Windows는 폴더 안 **`bandprepare` 를 더블클릭**하면 창이 뜹니다.
 
-# 실행
-bandprepare-gui
-```
-
-> 더블클릭으로 실행하는 **포터블 앱**(ffmpeg/Python/torch 사전 설치 불필요)은
-> [Releases](../../../releases)에서 받을 수 있습니다. 직접 빌드하려면
-> [개발 가이드의 "포터블 앱 빌드"](DEVELOPMENT.md#포터블-앱-빌드-pyinstaller)를 참고하세요.
+> ⚠️ **이름 주의**: macOS에서 더블클릭하는 건 **`BandPrepare.app`** 입니다(CLI는 앱 안
+> `Contents/MacOS/bandprepare-cli`). Linux·Windows 폴더에서는 접미사 **없는** `bandprepare` 가
+> **GUI**(더블클릭), `bandprepare-cli` 가 터미널용 CLI예요. (윈도우는 `bandprepare.exe`.)
+> 📌 릴리스는 비공개(draft)로 먼저 올라옵니다 — 자산이 안 보이면 공개 전일 수 있습니다.
+> 소스에서 직접 빌드해 실행하려면 [개발 가이드](DEVELOPMENT.md#소스에서-설치--install-from-source)를 참고하세요.
 
 ---
 
@@ -37,7 +45,8 @@ bandprepare-gui
 4. 끝나면 **출력 폴더 열기**
 
 > 💡 2스템 모델(`mel_band_roformer`)처럼 드럼이 없는 모델을 고르면 드럼 관련 옵션이
-> 자동으로 비활성화됩니다. RoFormer 모델은 `.[roformer]` extra가 설치돼 있어야 합니다.
+> 자동으로 비활성화됩니다. RoFormer 모델(`bs_roformer`/`mel_band_roformer`)은 **포터블
+> 앱에 포함**되어 별도 설치 없이 바로 고를 수 있습니다.
 
 ---
 

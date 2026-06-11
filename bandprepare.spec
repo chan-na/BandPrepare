@@ -140,15 +140,17 @@ a_cli = Analysis([str(project_root / "packaging" / "bandprepare_cli.py")], **ana
 pyz = PYZ(a.pure)
 pyz_cli = PYZ(a_cli.pure)
 
-# Settings shared by both EXE targets (differ only in pyz/scripts/name).
+# Settings shared by both EXE targets (differ only in pyz/scripts/name/console).
+# console is set PER-EXE below: the GUI is windowed (console=False) so the macOS
+# .app launches straight to a window instead of spawning Terminal.app, while the
+# CLI keeps its console. Note: console=False only changes the .app's plist/launch
+# behaviour — running the raw binary from a terminal (as the SELFTEST does) still
+# writes to stdout/stderr normally.
 exe_kwargs = dict(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    # PoC keeps a console so logs / the BANDPREPARE_GUI_SELFTEST output are
-    # visible. Phase 5 switches to a windowed macOS .app (+ codesign/notarize).
-    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,  # host arch; universal2 is impractical with torch (D7/R4).
@@ -156,9 +158,14 @@ exe_kwargs = dict(
     entitlements_file=None,
 )
 
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="bandprepare", **exe_kwargs)
+# GUI: windowed (no console) → double-clicking BandPrepare.app opens the window
+# directly. CLI: keep the console; it is a terminal program.
+exe = EXE(
+    pyz, a.scripts, [], exclude_binaries=True, name="bandprepare", console=False, **exe_kwargs
+)
 exe_cli = EXE(
-    pyz_cli, a_cli.scripts, [], exclude_binaries=True, name="bandprepare-cli", **exe_kwargs
+    pyz_cli, a_cli.scripts, [], exclude_binaries=True, name="bandprepare-cli", console=True,
+    **exe_kwargs,
 )
 
 # One COLLECT, both EXEs, one shared set of libraries → dist/bandprepare/ holding
@@ -173,3 +180,23 @@ coll = COLLECT(
     upx_exclude=[],
     name="bandprepare",
 )
+
+# macOS: wrap the onedir COLLECT in a windowed .app so Finder/LaunchServices
+# launches the GUI directly (no Terminal). The .app's primary executable is the
+# first EXE in COLLECT (the GUI); `bandprepare-cli` rides along inside
+# Contents/MacOS and stays usable from a terminal. Distribution still needs
+# codesign + notarize (Phase 5) or Gatekeeper will warn on first open.
+import sys
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="BandPrepare.app",
+        icon=None,  # no .icns yet; drop one in assets/ and point here later.
+        bundle_identifier="com.bandprepare.app",
+        info_plist={
+            "NSHighResolutionCapable": True,
+            "LSBackgroundOnly": False,
+            "CFBundleShortVersionString": "0.1.0",
+        },
+    )
