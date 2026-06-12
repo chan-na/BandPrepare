@@ -15,8 +15,8 @@ from .drumsep import DRUMSEP_SR, DRUMSEP_STEMS
 from .mdx23c import MDX23C_DRUM_STEMS, MDX23C_SR
 from .stems import STEM_ORDER, STEM_ORDER_4
 
-DEFAULT_STEM_MODEL = "htdemucs_6s"
-DEFAULT_DRUM_MODEL = "larsnet"
+DEFAULT_STEM_MODEL = "htdemucs_ft"
+DEFAULT_DRUM_MODEL = "mdx23c"
 
 
 # --- loaders (lazy backend imports) ---------------------------------------

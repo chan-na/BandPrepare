@@ -25,7 +25,7 @@
    🖥 **터미널로**: `./bandprepare/bandprepare-cli 내곡.mp3`
    (macOS는 `BandPrepare.app/Contents/MacOS/bandprepare-cli`) → [CLI 가이드](docs/CLI.md)
 
-결과는 `./output/내곡/` 폴더에 생깁니다.
+결과는 입력 파일 옆 `BandPrepareOutput/내곡/` 폴더에 생깁니다.
 
 > ⚠️ 받은 앱은 정식 서명/공증이 안 돼 있어 **첫 실행 때 OS 경고**가 한 번 뜹니다(허용하면 다음부터는 없음).
 > macOS는 `BandPrepare.app` 을 **우클릭 → 열기**(또는 `xattr -dr com.apple.quarantine BandPrepare.app`),
@@ -52,9 +52,8 @@
 
 ## ⚖️ 라이선스 요약
 
-BandPrepare 코드와 대부분의 모델(Demucs / DrumSep / MDX23C / RoFormer)은 MIT 등 상업
-이용이 가능한 라이선스입니다. 다만 **드럼 세부 분리 기본 모델 LarsNet의 사전학습
-체크포인트는 CC BY-NC 4.0(비상업)** 이라, 그 가중치를 쓴 결과물의 상업적 이용은
-제한됩니다. 상업적 용도라면 `--no-drum-split`(1단계 Demucs만) 또는
-`--drum-model drumsep` / `mdx23c`(둘 다 MIT)를 쓰세요. 모델별 출처·라이선스 전체는
+BandPrepare 코드와 기본 모델을 포함한 대부분의 모델(Demucs / MDX23C / DrumSep /
+RoFormer)은 MIT 등 상업 이용이 가능한 라이선스입니다. 다만 선택 가능한 드럼 모델
+**LarsNet의 사전학습 체크포인트는 CC BY-NC 4.0(비상업)** 이라, 그 가중치를 쓴
+결과물의 상업적 이용은 제한됩니다(기본 드럼 모델은 MIT인 `mdx23c`). 모델별 출처·라이선스 전체는
 [docs/REFERENCE.md](docs/REFERENCE.md#모델-출처--라이선스--model-sources--licenses)를 참고하세요.
