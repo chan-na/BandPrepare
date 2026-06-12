@@ -130,12 +130,14 @@ def test_default_output_dir():
 
 def _opts(**kw):
     # drum_model pinned to larsnet: these tests assert its 5-piece DRUM_STEMS
-    # layout regardless of the registry default (mdx23c).
+    # layout regardless of the registry default (mdx23c). drum_split pinned on
+    # (the Options default is off) so the split-layout tests keep exercising it.
     base = dict(
         input_path=Path("song.wav"),
         output_dir=Path("out"),
         stems=list(STEM_ORDER),
         drum_model="larsnet",
+        drum_split=True,
     )
     base.update(kw)
     return Options(**base)
@@ -175,6 +177,20 @@ def test_cli_keep_drums_stem_default_on():
     assert parser.parse_args(["song.mp3"]).keep_drums_stem is True
     assert parser.parse_args(["song.mp3", "--no-keep-drums-stem"]).keep_drums_stem is False
     assert parser.parse_args(["song.mp3", "--keep-drums-stem"]).keep_drums_stem is True
+
+
+def test_cli_drum_split_default_off():
+    from bandprepare.cli import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["song.mp3"]).drum_split is False
+    assert parser.parse_args(["song.mp3", "--drum-split"]).drum_split is True
+    assert parser.parse_args(["song.mp3", "--no-drum-split"]).drum_split is False
+
+
+def test_options_drum_split_default_off():
+    assert Options(input_path=Path("song.wav"), output_dir=Path("out"),
+                   stems=list(STEM_ORDER)).drum_split is False
 
 
 def test_planned_outputs_no_drum_split():
@@ -533,11 +549,12 @@ def test_mainwindow_stem_checkboxes_and_drum_controls():
     assert all(cb.isEnabled() for cb in win._minus_checks.values())
     assert not any(cb.isChecked() for cb in win._minus_checks.values())
     win._minus_group.setChecked(False)
-    # The default model has drums -> drum-split group enabled and on.
+    # The default model has drums -> drum-split group enabled, but it starts
+    # off, which disables its sub-options.
     assert win._drum_group.isEnabled()
-    assert win._drum_group.isChecked()
-    assert win._drum_combo.isEnabled()
-    assert win._keep_drums_check.isEnabled()
+    assert not win._drum_group.isChecked()
+    assert not win._drum_combo.isEnabled()
+    assert not win._keep_drums_check.isEnabled()
 
     # Switch to a 2-stem vocals/instrumental model (no drums).
     idx = win._stem_combo.findData("mel_band_roformer")
@@ -550,12 +567,15 @@ def test_mainwindow_stem_checkboxes_and_drum_controls():
     assert not win._drum_combo.isEnabled()
     assert not win._keep_drums_check.isEnabled()
 
-    # Switch back to a 6-stem model -> drum controls re-enabled.
+    # Switch back to a 6-stem model -> the group is re-enabled, but its
+    # sub-options stay disabled until the user turns the split on.
     idx = win._stem_combo.findData("htdemucs_6s")
     assert idx >= 0
     win._stem_combo.setCurrentIndex(idx)
     assert "drums" in win._stem_checks
     assert win._drum_group.isEnabled()
+    assert not win._drum_combo.isEnabled()
+    win._drum_group.setChecked(True)
     assert win._drum_combo.isEnabled()
     assert win._keep_drums_check.isEnabled()
 
@@ -566,20 +586,21 @@ def test_mainwindow_drum_split_off_disables_children_and_autochecks_keep():
     from bandprepare.gui.app import MainWindow
 
     win = MainWindow()
-    # Drum split defaults on -> keep-drums auto-on.
-    assert win._drum_group.isChecked()
-    assert win._keep_drums_check.isChecked()
-
-    # Turning drum split off disables its sub-options.
-    win._drum_group.setChecked(False)
+    # Drum split defaults off -> its sub-options start disabled.
+    assert not win._drum_group.isChecked()
     assert not win._drum_combo.isEnabled()
     assert not win._keep_drums_check.isEnabled()
     win._keep_drums_check.setChecked(False)
 
-    # Turning drum split back on re-checks keep-drums automatically.
+    # Turning drum split on enables the sub-options and auto-checks keep-drums.
     win._drum_group.setChecked(True)
     assert win._keep_drums_check.isChecked()
     assert win._drum_combo.isEnabled()
+
+    # Turning it back off disables the sub-options again.
+    win._drum_group.setChecked(False)
+    assert not win._drum_combo.isEnabled()
+    assert not win._keep_drums_check.isEnabled()
 
 
 def test_mainwindow_minus_group_off_yields_no_minus():
@@ -644,10 +665,10 @@ def test_mainwindow_collect_options_reads_widgets():
     assert opts.minus == ["bass"]
     assert opts.fmt == "mp3"
     assert opts.device_choice == "cpu"
-    # New defaults flow through: drum split on with keep-drums auto-on.
+    # Defaults flow through: drum split starts off; keep-drums checkbox is on.
     assert opts.stem_model == "htdemucs_ft"
     assert opts.drum_model == "mdx23c"
-    assert opts.drum_split is True
+    assert opts.drum_split is False
     assert opts.keep_drums_stem is True
 
 

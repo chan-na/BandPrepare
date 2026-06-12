@@ -60,7 +60,7 @@ class Options:
     device_choice: str = "auto"
     stem_model: str = registry.DEFAULT_STEM_MODEL
     drum_model: str = registry.DEFAULT_DRUM_MODEL
-    drum_split: bool = True
+    drum_split: bool = False
     keep_drums_stem: bool = True
     wiener_exponent: float | None = 1.0
     overwrite: bool = False
