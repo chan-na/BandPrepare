@@ -22,10 +22,12 @@ MIXES_SUBDIR = "mixes"
 # Progress hook: ``callback(stage, fraction, msg)``.
 #   stage    — stable machine key (see the emit() calls in run()), so a UI can
 #              react without parsing the human text.
-#   fraction — coarse overall progress in [0, 1], or None when unknown. Model-
-#              internal progress is out of scope (MVP); these are stage-boundary
-#              estimates, enough to drive a progress bar / spinner.
-#   msg      — bilingual human string for a log panel.
+#   fraction — overall progress in [0, 1], or None when unknown. Stage
+#              boundaries carry a human ``msg``; while a model runs, its
+#              chunk-level progress also arrives here (same stage key, mapped
+#              into that stage's slice of the bar) with an EMPTY ``msg``.
+#   msg      — bilingual human string for a log panel; "" for the model-
+#              internal ticks above (UIs: move the bar, skip the log).
 ProgressCallback = Callable[[str, Optional[float], str], None]
 
 
@@ -113,6 +115,24 @@ def run(opts: Options) -> int:
         if opts.progress_callback is not None:
             opts.progress_callback(stage_key, fraction, msg)
 
+    def model_progress(stage_key: str, start: float, end: float):
+        """Adapter mapping a backend's internal [0, 1] into ``[start, end]``
+        overall-bar emits (empty msg, at most one per percent)."""
+        if opts.progress_callback is None:
+            return None  # let backends skip their progress bookkeeping
+        last = -1
+
+        def cb(frac: float) -> None:
+            nonlocal last
+            frac = min(max(frac, 0.0), 1.0)
+            pct = int(frac * 100)
+            if pct <= last:
+                return
+            last = pct
+            emit(stage_key, start + (end - start) * frac, "")
+
+        return cb
+
     stem_info = registry.resolve_stem(opts.stem_model)
     drum_info = registry.resolve_drum(opts.drum_model) if _will_split_drums(opts) else None
 
@@ -170,7 +190,10 @@ def run(opts: Options) -> int:
 
     step(logger, "분리 중 / separating (this can take a while on CPU)")
     emit("separate_stems", 0.10, "악기 분리 중 / separating instruments")
-    sources = separator.separate(wav, stem_info.samplerate, progress=True)
+    sources = separator.separate(
+        wav, stem_info.samplerate, progress=True,
+        progress_cb=model_progress("separate_stems", 0.10, stems_done_frac),
+    )
 
     instr_dir = opts.output_dir / INSTRUMENT_SUBDIR
     written: list[Path] = []
@@ -215,7 +238,10 @@ def run(opts: Options) -> int:
             wiener_exponent=opts.wiener_exponent, verbose=opts.verbose,
         )
         emit("separate_drums", 0.68, "드럼 분리 중 / separating drum kit")
-        pieces = drum_separator.separate(sources["drums"], stem_info.samplerate, progress=True)
+        pieces = drum_separator.separate(
+            sources["drums"], stem_info.samplerate, progress=True,
+            progress_cb=model_progress("separate_drums", 0.68, 0.98),
+        )
         drums_dir = opts.output_dir / DRUMS_SUBDIR
         for piece in drum_info.output_stems:
             if piece not in pieces:

@@ -76,8 +76,12 @@ src/bandprepare/
 ```python
 class Separator(Protocol):
     info: ModelInfo
-    def separate(self, wav, input_sr, *, progress=True) -> dict[str, Tensor]: ...
+    def separate(self, wav, input_sr, *, progress=True,
+                 progress_cb=None) -> dict[str, Tensor]: ...
         # {stem_name: (channels, samples)}  @ info.samplerate
+        # progress    — 백엔드 자체 tqdm 막대(CLI용)
+        # progress_cb — 모델 내부 진행도(0~1)를 호출자에 보고(GUI 진행바용).
+        #               청크/스템 단위 추정치이며, 보고 못 하는 백엔드는 무시 가능
 ```
 
 모델의 정적 메타데이터는 불변 데이터클래스로 표현합니다.
@@ -123,7 +127,7 @@ def _roformer_loader(*, model_type, config_name, ckpt_url, ckpt_name):
 
 ### 3.3 모델별 지식(knobs)은 생성자에서
 
-각 단계 공통 호출은 `separate(wav, input_sr, progress=)`로 균일하게 두고,
+각 단계 공통 호출은 `separate(wav, input_sr, progress=, progress_cb=)`로 균일하게 두고,
 모델 고유 옵션은 **로더/생성자**로 전달합니다.
 
 - stem: `load(info, device, shifts=…)`  (Demucs만 사용, RoFormer는 무시)
@@ -291,7 +295,8 @@ x86_64 macOS 휠을 끊었습니다(소스 빌드 실패). 그래서 `roformer` 
 ## 10. 새 모델 추가하기 / Adding a model
 
 1. 백엔드 작성: `separation/<name>.py`에 `Separator` 프로토콜을 만족하는 클래스
-   (`info`, `separate(wav, input_sr, *, progress)`).
+   (`info`, `separate(wav, input_sr, *, progress, progress_cb)` —
+   `progress_cb`는 가능하면 모델 내부 진행도를 보고, 어려우면 무시해도 됨).
 2. 가중치 다운로드는 `download.py` 헬퍼 재사용. 큰 가중치만 런타임 다운로드,
    작은 config는 동봉 권장.
 3. `registry.py`에 로더(지연 import) + `ModelInfo` 항목 추가

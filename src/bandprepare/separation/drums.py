@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from ..errors import ModelError, SeparationError
 from ..logging_utils import get_logger, step
-from .base import ModelInfo
+from .base import ModelInfo, ProgressFn
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import torch
@@ -130,7 +130,8 @@ def _write_config(checkpoints: dict[str, Path]) -> Path:
 
 
 def _run(drums_wav: "torch.Tensor", device: str, wiener_exponent: float | None,
-         config_path: Path) -> dict[str, "torch.Tensor"]:
+         config_path: Path,
+         progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
     from ..vendor.larsnet import LarsNet
 
     net = LarsNet(
@@ -138,6 +139,7 @@ def _run(drums_wav: "torch.Tensor", device: str, wiener_exponent: float | None,
         wiener_exponent=wiener_exponent if wiener_exponent is not None else 1.0,
         config=str(config_path),
         device=device,
+        progress_callback=progress_cb,
     )
     stems = net(drums_wav.to(device))
     return {stem: wav.detach().cpu() for stem, wav in stems.items()}
@@ -145,7 +147,8 @@ def _run(drums_wav: "torch.Tensor", device: str, wiener_exponent: float | None,
 
 def separate(drums_wav: "torch.Tensor", input_sr: int, device: str, *,
              wiener_exponent: float | None = 1.0,
-             verbose: bool = False) -> dict[str, "torch.Tensor"]:
+             verbose: bool = False,
+             progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
     """Split a ``(channels, samples)`` drum stem into per-piece tensors.
 
     ``wiener_exponent`` enables alpha-Wiener post-filtering to reduce bleed
@@ -164,7 +167,7 @@ def separate(drums_wav: "torch.Tensor", input_sr: int, device: str, *,
     config_path = _write_config(checkpoints)
 
     try:
-        return _run(drums_wav, device, wiener_exponent, config_path)
+        return _run(drums_wav, device, wiener_exponent, config_path, progress_cb)
     except (NotImplementedError, RuntimeError) as exc:
         if device != "cpu":
             logger.warning(
@@ -173,7 +176,7 @@ def separate(drums_wav: "torch.Tensor", input_sr: int, device: str, *,
                 device, device, exc,
             )
             try:
-                return _run(drums_wav, "cpu", wiener_exponent, config_path)
+                return _run(drums_wav, "cpu", wiener_exponent, config_path, progress_cb)
             except Exception as exc2:
                 raise SeparationError(
                     f"드럼 세부 분리 실패 / Drum separation failed (cpu fallback): {exc2}"
@@ -194,8 +197,10 @@ class LarsNetSeparator:
         self._verbose = verbose
 
     def separate(self, wav: "torch.Tensor", input_sr: int, *,
-                 progress: bool = True) -> dict[str, "torch.Tensor"]:
+                 progress: bool = True,
+                 progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
         return separate(
             wav, input_sr, self._device,
             wiener_exponent=self._wiener_exponent, verbose=self._verbose,
+            progress_cb=progress_cb,
         )

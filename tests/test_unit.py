@@ -410,7 +410,11 @@ def _fake_info(kind, names):
         import torch
 
         class _Sep:
-            def separate(self, wav, sr, progress=True):
+            def separate(self, wav, sr, progress=True, progress_cb=None):
+                # Mimic a chunked backend reporting model-internal progress.
+                if progress_cb is not None:
+                    progress_cb(0.5)
+                    progress_cb(1.0)
                 return {n: torch.zeros(2, 100) for n in names}
 
         return _Sep()
@@ -450,7 +454,9 @@ def test_progress_callback_order_with_drum_split(tmp_path, monkeypatch):
     rc, events = _run_with_fakes(
         monkeypatch, tmp_path, drum_split=True, stems=["vocals", "drums", "bass"])
     assert rc == 0
-    keys = [stage for stage, _f, _m in events if stage != "save"]
+    # Stage-boundary events carry a human msg; model-internal ticks come with
+    # msg == "" and reuse the running stage's key.
+    keys = [stage for stage, _f, msg in events if stage != "save" and msg]
     assert keys == [
         "start", "stem_model", "load_audio", "separate_stems", "stems_done",
         "drum_model", "separate_drums", "drums_done", "done",
@@ -460,12 +466,26 @@ def test_progress_callback_order_with_drum_split(tmp_path, monkeypatch):
     assert events[-1][0] == "done" and events[-1][1] == 1.0
 
 
+def test_progress_callback_model_ticks_mapped_into_stage_window(tmp_path, monkeypatch):
+    _rc, events = _run_with_fakes(
+        monkeypatch, tmp_path, drum_split=True, stems=["vocals", "drums", "bass"])
+    stem_ticks = [f for s, f, msg in events if s == "separate_stems" and not msg]
+    drum_ticks = [f for s, f, msg in events if s == "separate_drums" and not msg]
+    # The fake backend reports 0.5 and 1.0; they land inside each stage's slice
+    # of the overall bar (stems 0.10→0.55 with drum split, drums 0.68→0.98).
+    assert stem_ticks and all(0.10 <= f <= 0.55 for f in stem_ticks)
+    assert drum_ticks and all(0.68 <= f <= 0.98 for f in drum_ticks)
+
+
 def test_progress_callback_no_drum_split(tmp_path, monkeypatch):
     rc, events = _run_with_fakes(
         monkeypatch, tmp_path, drum_split=False, stems=["vocals", "drums", "bass"])
     assert rc == 0
-    keys = [stage for stage, _f, _m in events if stage != "save"]
+    keys = [stage for stage, _f, msg in events if stage != "save" and msg]
     assert keys == ["start", "stem_model", "load_audio", "separate_stems", "stems_done", "done"]
+    # Without drum split the stems stage owns the bar up to 0.85.
+    stem_ticks = [f for s, f, msg in events if s == "separate_stems" and not msg]
+    assert stem_ticks and all(0.10 <= f <= 0.85 for f in stem_ticks)
 
 
 def test_progress_callback_reports_minus(tmp_path, monkeypatch):
@@ -480,6 +500,42 @@ def test_run_without_callback_no_regression(tmp_path, monkeypatch):
         monkeypatch, tmp_path, drum_split=True, stems=["vocals", "drums", "bass"], callback=None)
     assert rc == 0
     assert events == []
+
+
+def test_demix_reports_chunk_progress():
+    torch = pytest.importorskip("torch")
+    from bandprepare.separation.roformer import _demix
+
+    cfg = {
+        "training": {"instruments": ["kick", "snare"]},
+        "audio": {"chunk_size": 32},
+        "inference": {"num_overlap": 2, "batch_size": 1},
+    }
+
+    class _Model:
+        def __call__(self, arr):  # (B, C, T) -> (B, instruments, C, T)
+            return torch.zeros(arr.shape[0], 2, arr.shape[1], arr.shape[2])
+
+    fracs: list[float] = []
+    out = _demix(cfg, _Model(), torch.zeros(2, 200), "cpu",
+                 progress=False, progress_cb=fracs.append)
+    assert set(out) == {"kick", "snare"}
+    assert fracs and fracs == sorted(fracs)  # one tick per chunk, increasing
+    assert fracs[-1] == 1.0
+
+
+def test_demucs_chunk_estimate():
+    from bandprepare.separation.stems import _estimate_total_chunks
+
+    class _M:
+        samplerate = 44100
+        segment = 8.0
+
+    # 60 s track, shifts=1, overlap 0.25 → 6 s stride → ~11 chunks.
+    total = _estimate_total_chunks([_M()], 60 * 44100, shifts=1, overlap=0.25)
+    assert 10 <= total <= 12
+    # A bag of 4 sub-models (htdemucs_ft) runs each over the whole track.
+    assert _estimate_total_chunks([_M()] * 4, 60 * 44100, 1, 0.25) == 4 * total
 
 
 # --- Phase 3: PySide6 GUI --------------------------------------------------
@@ -601,6 +657,22 @@ def test_mainwindow_drum_split_off_disables_children_and_autochecks_keep():
     win._drum_group.setChecked(False)
     assert not win._drum_combo.isEnabled()
     assert not win._keep_drums_check.isEnabled()
+
+
+def test_mainwindow_progress_ticks_move_bar_without_log():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    # Model-internal tick: empty msg moves the bar but writes nothing to the log.
+    win._on_progress("separate_stems", 0.42, "")
+    assert win._progress.value() == 42
+    assert win._log.toPlainText() == ""
+    # Stage boundary: non-empty msg is logged as before.
+    win._on_progress("stems_done", 0.55, "악기 분리 완료 / instruments separated")
+    assert "instruments separated" in win._log.toPlainText()
+    assert win._progress.value() == 55
 
 
 def test_mainwindow_minus_group_off_yields_no_minus():

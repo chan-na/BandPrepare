@@ -425,7 +425,9 @@ class MainWindow(QMainWindow):
     def _on_progress(self, stage: str, fraction, msg: str) -> None:
         if fraction is not None:
             self._progress.setValue(int(fraction * 100))
-        self._append_log(msg)
+        # Model-internal ticks arrive with an empty msg: bar only, no log spam.
+        if msg:
+            self._append_log(msg)
 
     def _on_finished(self, rc: int) -> None:
         if rc == 0:
