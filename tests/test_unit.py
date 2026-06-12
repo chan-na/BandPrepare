@@ -731,3 +731,37 @@ def test_configure_multiprocessing_sets_non_mp_tqdm_lock(monkeypatch):
             cls._lock = saved
         elif hasattr(cls, "_lock"):
             del cls._lock
+
+
+# ---------------------------------------------------------------------------
+# _frozen_streams — windowed Windows builds start with sys.stdout/stderr = None
+# (pythonw semantics); tqdm inside demucs then crashes with "'NoneType' object
+# has no attribute 'write'". configure_std_streams() points None streams at
+# devnull and leaves real streams alone.
+
+
+def test_configure_std_streams_replaces_none_streams(monkeypatch):
+    import sys
+
+    from bandprepare._frozen_streams import configure_std_streams
+
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    configure_std_streams()
+    try:
+        sys.stdout.write("ok")  # the exact call that failed on Windows
+        sys.stderr.write("ok")
+    finally:
+        sys.stdout.close()
+        sys.stderr.close()
+
+
+def test_configure_std_streams_keeps_real_streams():
+    import sys
+
+    from bandprepare._frozen_streams import configure_std_streams
+
+    out, err = sys.stdout, sys.stderr
+    configure_std_streams()
+    assert sys.stdout is out
+    assert sys.stderr is err
