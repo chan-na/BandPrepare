@@ -596,6 +596,20 @@ def test_mainwindow_minus_group_off_yields_no_minus():
     assert opts.minus == []
 
 
+def test_gui_window_icon_ships_with_package():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from PySide6.QtGui import QIcon
+
+    from bandprepare.gui import app as gui_app
+
+    # gui/app.py resolves the icon next to its own module; the PNG is generated
+    # from assets/icon.svg by packaging/make_icons.py and must stay committed.
+    icon_png = Path(gui_app.__file__).with_name("icon.png")
+    assert icon_png.exists()
+    assert not QIcon(str(icon_png)).isNull()
+
+
 def test_mainwindow_set_input_prefills_default_output():
     pytest.importorskip("PySide6")
     _qapp()

@@ -138,6 +138,11 @@ pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
 - 한 번들에 **GUI(`bandprepare`)와 CLI(`bandprepare-cli`) 두 바이너리**가 함께 들어갑니다.
   같은 라이브러리(torch 등)를 공유하므로 CLI를 추가해도 용량은 거의 늘지 않습니다. Python
   설치 없이 `./dist/bandprepare/bandprepare-cli <곡>` 로 CLI를 쓸 수 있습니다(옵션은 동일).
+- **앱 아이콘**: 원본은 `assets/icon.svg` 하나입니다. 수정 후
+  `QT_QPA_PLATFORM=offscreen python packaging/make_icons.py` 를 실행하면 빌드가 쓰는
+  세 파일 — `assets/icon.icns`(macOS 번들), `assets/icon.ico`(Windows exe),
+  `src/bandprepare/gui/icon.png`(창/태스크바) — 이 다시 생성됩니다. 셋 다 커밋 대상이며,
+  `.icns` 는 macOS의 `iconutil` 이 필요해 macOS에서만 재생성됩니다.
 - **ffmpeg는 번들에 동봉**(`imageio-ffmpeg`)되어 시스템 설치가 필요 없습니다.
 - **모델 가중치만** 첫 실행 시 캐시(`~/.cache/bandprepare`, 번들 바깥)로 다운로드됩니다.
 - **RoFormer 모델(BS-RoFormer · Mel-Band)도 번들에 동봉**됩니다. Mel-Band의 유일한

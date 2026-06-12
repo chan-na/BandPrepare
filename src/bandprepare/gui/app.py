@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -517,6 +517,12 @@ def main() -> int:
     # Stop tqdm's mp lock from spawning a duplicate (empty) GUI window.
     configure_multiprocessing()
     app = QApplication.instance() or QApplication(sys.argv)
+    # Window/taskbar icon (Linux/Windows; the macOS Dock uses the .app's .icns).
+    # Rendered from assets/icon.svg by packaging/make_icons.py; ships next to
+    # this module in both the wheel and the frozen bundle.
+    icon_path = Path(__file__).with_name("icon.png")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     # Expose the bundled ffmpeg on PATH once, before any separation runs.
     ffmpeg_path = audio.prepare_ffmpeg_path()
     window = MainWindow()
