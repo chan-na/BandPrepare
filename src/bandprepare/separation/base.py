@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import torch
 
+# Model-internal progress reporter: called with a fraction in [0, 1] as a
+# backend works through its chunks / sub-models. Backends may call it at any
+# granularity (or never, if they cannot report); fractions are estimates, so
+# callers should clamp and tolerate values that stop short of 1.0.
+ProgressFn = Callable[[float], None]
+
 
 @dataclass(frozen=True)
 class ModelInfo:
@@ -46,7 +52,8 @@ class Separator(Protocol):
     info: ModelInfo
 
     def separate(
-        self, wav: "torch.Tensor", input_sr: int, *, progress: bool = True
+        self, wav: "torch.Tensor", input_sr: int, *, progress: bool = True,
+        progress_cb: ProgressFn | None = None,
     ) -> dict[str, "torch.Tensor"]:
         """Return ``{stem_name: (channels, samples)}`` at ``self.info.samplerate``."""
         ...

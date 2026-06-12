@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ..errors import ModelError, SeparationError
 from ..logging_utils import get_logger
 from . import download
-from .base import ModelInfo
+from .base import ModelInfo, ProgressFn
 from .stems import apply_demucs
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -95,7 +95,8 @@ class DrumSepSeparator:
         self._model = _load_model(device, verbose)
 
     def separate(self, wav: "torch.Tensor", input_sr: int, *,
-                 progress: bool = True) -> dict[str, "torch.Tensor"]:
+                 progress: bool = True,
+                 progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
         if input_sr != DRUMSEP_SR:
             import torchaudio as ta
 
@@ -106,6 +107,7 @@ class DrumSepSeparator:
             by_name = apply_demucs(
                 self._model, wav, self._device,
                 shifts=self._shifts, overlap=self._overlap, progress=progress,
+                progress_cb=progress_cb,
             )
         except SeparationError:
             raise

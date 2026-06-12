@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from ..errors import ModelError, SeparationError
 from ..logging_utils import get_logger
 from . import download
-from .base import ModelInfo
+from .base import ModelInfo, ProgressFn
 from .roformer import _demix  # shared chunked-overlap inference engine
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -149,7 +149,8 @@ class MDX23CSeparator:
         return model
 
     def separate(self, wav: "torch.Tensor", input_sr: int, *,
-                 progress: bool = True) -> dict[str, "torch.Tensor"]:
+                 progress: bool = True,
+                 progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
         sr = int(self._cfg["audio"]["sample_rate"])
         if input_sr != sr:
             import torchaudio as ta
@@ -159,13 +160,15 @@ class MDX23CSeparator:
 
         try:
             pieces = _demix(self._cfg, self._model, wav, self._device,
-                            progress=progress, desc="mdx23c")
+                            progress=progress, desc="mdx23c",
+                            progress_cb=progress_cb)
         except (NotImplementedError, RuntimeError) as exc:
-            pieces = self._cpu_fallback(wav, exc, progress)
+            pieces = self._cpu_fallback(wav, exc, progress, progress_cb)
         return {s: t.detach().cpu() for s, t in _map_sources(pieces).items()}
 
     def _cpu_fallback(self, wav: "torch.Tensor", exc: Exception,
-                      progress: bool) -> dict[str, "torch.Tensor"]:
+                      progress: bool,
+                      progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
         """Retry on CPU once if STFT/complex ops are unsupported on the device
         (e.g. MPS), mirroring LarsNet's fallback."""
         logger = get_logger()
@@ -182,7 +185,8 @@ class MDX23CSeparator:
         self._device = "cpu"
         try:
             return _demix(self._cfg, self._model, wav, "cpu",
-                          progress=progress, desc="mdx23c")
+                          progress=progress, desc="mdx23c",
+                          progress_cb=progress_cb)
         except (NotImplementedError, RuntimeError) as exc2:
             raise SeparationError(
                 f"드럼 세부 분리 실패 / MDX23C separation failed (cpu fallback): {exc2}"

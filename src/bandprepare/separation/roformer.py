@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ..errors import ModelError, SeparationError
 from ..logging_utils import get_logger
 from . import download
-from .base import ModelInfo
+from .base import ModelInfo, ProgressFn
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import torch
@@ -76,12 +76,14 @@ def _getWindowingArray(window_size: int, fade_size: int):
 
 
 def _demix(cfg: dict, model, mix: "torch.Tensor", device: str,
-           progress: bool = True, desc: str = "separating") -> dict[str, "torch.Tensor"]:
+           progress: bool = True, desc: str = "separating",
+           progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
     """Chunked-overlap inference. Port of ZFTurbo ``demix_track``.
 
     ``mix`` is ``(channels, samples)`` float32 at the model's sample rate.
     Returns ``{instrument: (channels, samples)}``. Shared by the RoFormer stem
-    backend and the MDX23C drum backend (``desc`` only labels the progress bar).
+    backend and the MDX23C drum backend (``desc`` only labels the progress bar;
+    ``progress_cb`` additionally receives the chunk-level fraction in [0, 1]).
     """
     import torch
     import torch.nn.functional as F
@@ -153,6 +155,8 @@ def _demix(cfg: dict, model, mix: "torch.Tensor", device: str,
 
                 if pbar is not None:
                     pbar.update(step)
+                if progress_cb is not None:
+                    progress_cb(min(i / total, 1.0))
 
             if pbar is not None:
                 pbar.close()
@@ -207,7 +211,8 @@ class RoformerSeparator:
         self._model = model
 
     def separate(self, wav: "torch.Tensor", input_sr: int, *,
-                 progress: bool = True) -> dict[str, "torch.Tensor"]:
+                 progress: bool = True,
+                 progress_cb: ProgressFn | None = None) -> dict[str, "torch.Tensor"]:
         sr = int(self._cfg["audio"]["sample_rate"])
         if input_sr != sr:
             import torchaudio as ta
@@ -216,7 +221,8 @@ class RoformerSeparator:
             wav = ta.functional.resample(wav, input_sr, sr)
         try:
             pieces = _demix(self._cfg, self._model, wav, self._device,
-                            progress=progress, desc="roformer")
+                            progress=progress, desc="roformer",
+                            progress_cb=progress_cb)
         except (NotImplementedError, RuntimeError) as exc:
             raise SeparationError(
                 f"악기 분리 실패 / RoFormer separation failed: {exc}"

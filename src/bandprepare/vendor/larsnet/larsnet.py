@@ -4,8 +4,11 @@
 # https://doi.org/10.1016/j.patrec.2024.04.026
 # Pretrained checkpoints are licensed CC BY-NC 4.0.
 #
-# Only modification vs. upstream: the `from unet import ...` line below was made
-# a relative import so the module works as part of the `bandprepare` package.
+# Modifications vs. upstream:
+# - the `from unet import ...` line below was made a relative import so the
+#   module works as part of the `bandprepare` package;
+# - an optional `progress_callback` (fraction in [0, 1]) reports per-stem
+#   progress from the separation loops, for the BandPrepare GUI progress bar.
 import yaml
 import torch
 import torch.nn as nn
@@ -24,6 +27,7 @@ class LarsNet(nn.Module):
                  config: Union[str, Path] = "config.yaml",
                  return_stft: bool = False,
                  device: str = 'cpu',
+                 progress_callback=None,
                  **kwargs
                  ):
         super().__init__(**kwargs)
@@ -36,6 +40,7 @@ class LarsNet(nn.Module):
         self.wiener_filter = wiener_filter
         self.wiener_exponent = wiener_exponent
         self.return_stft = return_stft
+        self.progress_callback = progress_callback
         self.stems = config['inference_models'].keys()
         self.utils = UNetUtils(device=self.device)
         self.sr = config['global']['sr']
@@ -78,10 +83,12 @@ class LarsNet(nn.Module):
 
             print('Separate drums...')
             pbar = tqdm(self.models.items())
-            for stem, model in pbar:
+            for k, (stem, model) in enumerate(pbar):
                 pbar.set_description(stem)
                 y, __ = model(x)
                 out[stem] = y.squeeze(0).detach()
+                if self.progress_callback is not None:
+                    self.progress_callback((k + 1) / len(self.models))
 
         return out
 
@@ -95,12 +102,14 @@ class LarsNet(nn.Module):
 
             print('Separate drums...')
             pbar = tqdm(self.models.items())
-            for stem, model in pbar:
+            for k, (stem, model) in enumerate(pbar):
                 pbar.set_description(stem)
                 __, mask = model(mag)
                 mag_pred.append(
                     (mask * mag) ** self.wiener_exponent
                 )
+                if self.progress_callback is not None:
+                    self.progress_callback((k + 1) / len(self.models))
 
             pred_sum = sum(mag_pred)
 
@@ -120,11 +129,13 @@ class LarsNet(nn.Module):
 
             print('Separate drum magnitude...')
             pbar = tqdm(self.models.items())
-            for stem, model in pbar:
+            for k, (stem, model) in enumerate(pbar):
                 pbar.set_description(stem)
                 mag_pred, __ = model(mag)
                 stft = torch.polar(mag_pred, phase)
                 out[stem] = stft.squeeze(0).detach()
+                if self.progress_callback is not None:
+                    self.progress_callback((k + 1) / len(self.models))
 
         return out
 
