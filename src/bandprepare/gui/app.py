@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from .. import audio
 from .._frozen_mp import configure_multiprocessing
+from .._frozen_streams import configure_std_streams
 from .._ssl_certs import configure_ssl_cert_file
 from ..cli import default_output_dir
 from ..device import VALID_CHOICES
@@ -511,6 +512,9 @@ def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
 
 
 def main() -> int:
+    # Windowed Windows builds start with sys.stdout/stderr = None; tqdm (inside
+    # demucs) would crash writing its progress bar. Must run before anything logs.
+    configure_std_streams()
     # Frozen bundles ship their own OpenSSL with no usable CA path; point it at
     # the bundled certifi store so weight downloads don't fail TLS verification.
     configure_ssl_cert_file()
