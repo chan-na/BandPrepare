@@ -21,9 +21,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bandprepare",
         description=(
-            "음원을 악기별 트랙으로 분리하고 드럼은 킥/스네어/하이햇/심벌/톰으로 세분화합니다.\n"
-            "Split a song into per-instrument tracks; further split drums into "
-            "kick/snare/hihat/cymbals/toms."
+            "음원을 악기별 트랙으로 분리하고, --drum-split 로 드럼을 "
+            "킥/스네어/하이햇/심벌/톰으로 세분화할 수 있습니다.\n"
+            "Split a song into per-instrument tracks; optionally split drums into "
+            "kick/snare/hihat/cymbals/toms with --drum-split."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -32,8 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  bandprepare song.wav -o out/ --format flac\n"
             "  bandprepare song.mp3 --stems vocals,drums,bass\n"
             "  bandprepare song.mp3 --minus bass        # 베이스 뺀 합본 / play-along\n"
-            "  bandprepare song.mp3 --stem-model htdemucs_6s --no-drum-split\n"
-            "  bandprepare song.mp3 --drum-model drumsep\n"
+            "  bandprepare song.mp3 --drum-split    # 드럼 세부 분리 / split the drum kit\n"
+            "  bandprepare song.mp3 --drum-split --drum-model drumsep\n"
+            "  bandprepare song.mp3 --stem-model htdemucs_6s\n"
             "  bandprepare --list-models\n"
         ),
     )
@@ -59,8 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--minus", type=str, default=None, metavar="STEM[,STEM...]",
                         help="해당 악기를 뺀 합본(마이너스원) 생성 / mix minus the given stem(s), "
                              "comma-separated (e.g. --minus vocals or --minus vocals,bass)")
-    parser.add_argument("--no-drum-split", action="store_true",
-                        help="드럼 세부 분리를 건너뜀 / skip drum-kit separation")
+    parser.add_argument("--drum-split", action=argparse.BooleanOptionalAction,
+                        default=False,
+                        help="드럼 스템을 킥/스네어 등 조각으로 세부 분리 (기본: 꺼짐) / "
+                             "split the drums stem into kit pieces (default: off)")
     parser.add_argument("--format", dest="fmt", choices=SUPPORTED_FORMATS, default="wav",
                         help="출력 포맷 / output format (default: wav)")
     parser.add_argument("--device", choices=VALID_CHOICES, default="auto",
@@ -158,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         wiener = 1.0
     else:
         wiener = args.drum_wiener
-    if wiener_explicit and args.drum_model != "larsnet" and not args.no_drum_split:
+    if wiener_explicit and args.drum_model != "larsnet" and args.drum_split:
         logger.warning(
             "  ! --drum-wiener/--no-drum-wiener 는 LarsNet 전용이며 '%s' 에서는 무시됩니다 / "
             "Wiener options apply to LarsNet only; ignored for '%s'.",
@@ -175,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         device_choice=args.device,
         stem_model=args.stem_model,
         drum_model=args.drum_model,
-        drum_split=not args.no_drum_split,
+        drum_split=args.drum_split,
         keep_drums_stem=args.keep_drums_stem,
         wiener_exponent=wiener,
         overwrite=args.overwrite,

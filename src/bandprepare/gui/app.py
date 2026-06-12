@@ -193,7 +193,7 @@ class MainWindow(QMainWindow):
         # drum split is on; turning it on auto-checks keep-drums (see toggled).
         self._drum_group = QGroupBox("드럼 분리 / Drum split")
         self._drum_group.setCheckable(True)
-        self._drum_group.setChecked(True)
+        self._drum_group.setChecked(False)
         self._drum_group.toggled.connect(self._on_drum_split_toggled)
         drum_box = QVBoxLayout(self._drum_group)
         drum_form = QFormLayout()

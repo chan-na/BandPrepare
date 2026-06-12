@@ -79,7 +79,8 @@ bandprepare-cli <input_audio> [options]
   --list-models                 사용 가능한 모델 목록 출력 후 종료
   --stems LIST                  분리할 악기 선택 (기본: all, 선택지는 모델별로 다름)
   --minus STEM[,STEM...]        해당 악기를 뺀 합본(마이너스원) 생성 → mixes/minus-*.<fmt>
-  --no-drum-split               드럼 세부 분리 단계를 건너뜀
+  --drum-split                  드럼 세부 분리 단계 실행 (기본: 꺼짐)
+  --no-drum-split               드럼 세부 분리 단계를 끔 (기본값)
   --format {wav,mp3,flac}       출력 포맷 (기본: wav)
   --device {auto,cpu,cuda,mps}  연산 장치 (기본: auto)
   --keep-drums-stem             세부 분리 후에도 원본 drums stem 보존 (기본: 켜짐)
@@ -96,12 +97,13 @@ bandprepare-cli <input_audio> [options]
 ## 처리 파이프라인 / Pipeline
 
 두 단계 모두 모델을 선택할 수 있습니다(`--stem-model`/`--drum-model`, `--list-models`).
+2단계(드럼 세부 분리)는 기본으로 꺼져 있으며 `--drum-split` 를 줬을 때만 실행됩니다.
 기본값:
 
 | 단계 | 기본 모델 | 출력 |
 |------|------|------|
 | **1. 악기 분리** | [Demucs `htdemucs_ft`](https://github.com/facebookresearch/demucs) (fine-tuned, 4스템) | `vocals`, `drums`, `bass`, `other` |
-| **2. 드럼 세부 분리** | MDX23C DrumSep (aufr33/jarredou, 6조각) | `kick`, `snare`, `toms`, `hihat`, `ride`, `crash` |
+| **2. 드럼 세부 분리** (`--drum-split` 시) | MDX23C DrumSep (aufr33/jarredou, 6조각) | `kick`, `snare`, `toms`, `hihat`, `ride`, `crash` |
 
 선택 가능한 모델 전체는 [CLI 가이드의 "분리 모델 바꾸기"](CLI.md#-분리-모델-바꾸기-모델-선택) 표를 참고하세요
 (1단계: `htdemucs_6s`/`htdemucs_ft`/`bs_roformer`/`mel_band_roformer`,
@@ -117,15 +119,15 @@ bandprepare-cli <input_audio> [options]
 BandPrepareOutput/<곡이름>/        # 기본: 입력 파일 옆에 생성 (-o 로 변경 가능)
 ├── instruments/
 │   ├── vocals.wav  bass.wav  other.wav     # htdemucs_6s 선택 시 guitar/piano 추가
-│   └── drums.wav            # 기본 보존 (--no-keep-drums-stem 시 제외)
-├── drums/
+│   └── drums.wav            # 세부 분리 시에도 기본 보존 (--no-keep-drums-stem 시 제외)
+├── drums/                     # --drum-split 사용 시에만
 │   └── kick.wav  snare.wav  toms.wav  hihat.wav  ride.wav  crash.wav
 └── mixes/                     # --minus 사용 시에만
     └── minus-<악기>.wav        # 예: minus-bass.wav, minus-vocals-bass.wav
 ```
 
 `--stems` 로 일부만 선택하면 해당 파일만 생성됩니다. `drums` 를 선택하지 않으면
-드럼 세부 분리도 수행하지 않습니다. `--minus` 는 이와 독립으로 동작해
+`--drum-split` 를 줘도 드럼 세부 분리는 수행하지 않습니다. `--minus` 는 이와 독립으로 동작해
 `mixes/` 에 마이너스원 합본을 추가로 만듭니다(`원본 믹스 − 선택 스템`).
 
 > **플랫폼 메모**: `torch`/`torchaudio`는 `<2.3`으로 고정. Intel(x86_64) macOS용
@@ -211,8 +213,10 @@ MIT)을 `--drum-model drumsep` 로 선택할 수 있습니다.
 | CPU | 곡 길이의 1–2배 정도 | 수~수십 초 | ~2–4 GB RAM |
 | CUDA GPU | 수 초~수십 초 | 수 초 | ~2–4 GB VRAM |
 
-- 첫 실행에는 모델 다운로드 시간이 추가됩니다(기본 조합: Demucs 약 300 MB + MDX23C 약 438 MB).
-- 더 빠르게: `--no-drum-wiener`(드럼 가속) 또는 `--no-drum-split`(2단계 생략).
+- 첫 실행에는 모델 다운로드 시간이 추가됩니다(Demucs 약 300 MB,
+  `--drum-split` 사용 시 MDX23C 약 438 MB 추가).
+- 2단계(드럼 세부 분리)는 기본으로 꺼져 있습니다(`--drum-split` 로 켬).
+  LarsNet 사용 시 `--no-drum-wiener` 로 드럼 단계를 더 가속할 수 있습니다.
 
 ## 오류 처리 / Exit codes
 

@@ -1,12 +1,13 @@
 # BandPrepare 🥁🎸
 
-음원 한 곡을 **악기별 트랙**으로 분리하고, **드럼은 다시 킥/스네어/하이햇/심벌/톰**으로
-세분화해 주는 도구입니다. 밴드 멤버가 곡을 파트별로 나눠 개별 연습
+음원 한 곡을 **악기별 트랙**으로 분리하고, 원하면 **드럼은 다시
+킥/스네어/하이햇/심벌/톰**으로 세분화해 주는 도구입니다(드럼 세부 분리는 옵션, 기본 꺼짐).
+밴드 멤버가 곡을 파트별로 나눠 개별 연습
 (내 파트만 듣기 / 내 파트만 빼고 듣기)에 쓰는 것을 목표로 합니다.
 **커맨드라인(CLI)** 과 **마우스로 쓰는 GUI** 를 모두 제공합니다.
 
-> A tool that splits a song into per-instrument stems and further splits the drum
-> stem into individual kit pieces, so band members can practice their part in
+> A tool that splits a song into per-instrument stems and can optionally split the
+> drum stem into individual kit pieces, so band members can practice their part in
 > isolation. Available as both a CLI and a desktop GUI.
 > (문서는 한국어 사용 가이드 중심입니다.)
 
