@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -43,6 +43,14 @@ from .worker import Worker
 # Audio extensions accepted via drag-and-drop / file dialog. Decoding ultimately
 # relies on ffmpeg for compressed formats; SUPPORTED_FORMATS covers outputs.
 _AUDIO_EXTS = (".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".aiff", ".aif")
+
+
+def _desc_label(text: str) -> QLabel:
+    """Subdued helper text shown under a control."""
+    label = QLabel(text)
+    label.setWordWrap(True)
+    label.setStyleSheet("color: palette(mid); font-size: 11px;")
+    return label
 
 
 def build_options(
@@ -106,7 +114,11 @@ class MainWindow(QMainWindow):
         central = QWidget()
         root = QVBoxLayout(central)
 
-        # Input file: drag-and-drop label + chooser button.
+        # --- 입출력 파일 / Input & output files -------------------------------
+        # "&&" → literal "&" (a single "&" marks a mnemonic in Qt titles).
+        io_group = QGroupBox("입출력 파일 / Input && output files")
+        io_form = QFormLayout(io_group)
+
         self._input_edit = QLineEdit()
         self._input_edit.setPlaceholderText(
             "오디오 파일을 여기로 끌어다 놓거나 선택하세요 / "
@@ -118,67 +130,97 @@ class MainWindow(QMainWindow):
         in_row = QHBoxLayout()
         in_row.addWidget(self._input_edit, 1)
         in_row.addWidget(choose_file)
-        root.addWidget(QLabel("입력 파일 / Input file"))
-        root.addLayout(in_row)
+        io_form.addRow("입력 파일 / Input file", in_row)
 
-        # Models + format + device.
-        form = QFormLayout()
-        self._stem_combo = QComboBox()
-        self._stem_combo.currentIndexChanged.connect(self._on_stem_model_changed)
-        form.addRow("악기 모델 / Stem model", self._stem_combo)
-
-        self._drum_combo = QComboBox()
-        form.addRow("드럼 모델 / Drum model", self._drum_combo)
-
-        self._fmt_combo = QComboBox()
-        self._fmt_combo.addItems(list(audio.SUPPORTED_FORMATS))
-        form.addRow("포맷 / Format", self._fmt_combo)
-
-        self._device_combo = QComboBox()
-        self._device_combo.addItems(list(VALID_CHOICES))
-        form.addRow("장치 / Device", self._device_combo)
-        root.addLayout(form)
-
-        # Stem selection (which stems to keep).
-        self._stems_group = QGroupBox("저장할 스템 / Stems to keep")
-        self._stems_layout = QHBoxLayout(self._stems_group)
-        root.addWidget(self._stems_group)
-
-        # Mix-minus selection.
-        self._minus_group = QGroupBox(
-            "마이너스원 (빼낼 스템) / Mix-minus (stems to remove)"
-        )
-        self._minus_layout = QHBoxLayout(self._minus_group)
-        root.addWidget(self._minus_group)
-
-        # Boolean flags.
-        flags_row = QHBoxLayout()
-        self._drum_split_check = QCheckBox("드럼 분리 / Drum split")
-        self._drum_split_check.setChecked(True)
-        self._drum_split_check.toggled.connect(self._update_drum_controls_enabled)
-        self._keep_drums_check = QCheckBox("드럼 스템 유지 / Keep drums stem")
-        self._overwrite_check = QCheckBox("덮어쓰기 / Overwrite")
-        self._verbose_check = QCheckBox("자세히 / Verbose")
-        for cb in (
-            self._drum_split_check,
-            self._keep_drums_check,
-            self._overwrite_check,
-            self._verbose_check,
-        ):
-            flags_row.addWidget(cb)
-        flags_row.addStretch(1)
-        root.addLayout(flags_row)
-
-        # Output folder.
         self._output_edit = QLineEdit()
-        self._output_edit.setPlaceholderText("출력 폴더 / Output folder")
+        self._output_edit.setPlaceholderText(
+            "비워 두면 입력 파일 옆 BandPrepareOutput/<곡이름> / "
+            "Empty → BandPrepareOutput/<name> next to the input file"
+        )
         choose_folder = QPushButton("폴더 선택 / Choose folder…")
         choose_folder.clicked.connect(self._choose_folder)
         out_row = QHBoxLayout()
         out_row.addWidget(self._output_edit, 1)
         out_row.addWidget(choose_folder)
-        root.addWidget(QLabel("출력 폴더 / Output folder"))
-        root.addLayout(out_row)
+        io_form.addRow("출력 폴더 / Output folder", out_row)
+
+        self._fmt_combo = QComboBox()
+        self._fmt_combo.addItems(list(audio.SUPPORTED_FORMATS))
+        io_form.addRow("출력 포맷 / Output format", self._fmt_combo)
+        root.addWidget(io_group)
+
+        # --- 스템 모델 / Stem model -------------------------------------------
+        stem_group = QGroupBox("스템 모델 / Stem model")
+        stem_box = QVBoxLayout(stem_group)
+        stem_form = QFormLayout()
+        self._stem_combo = QComboBox()
+        self._stem_combo.currentIndexChanged.connect(self._on_stem_model_changed)
+        stem_form.addRow("악기 모델 / Stem model", self._stem_combo)
+        stem_box.addLayout(stem_form)
+        stem_box.addWidget(_desc_label(
+            "입력 파일을 악기별 스템으로 분리할 때 사용하는 모델입니다. / "
+            "Model used to separate the input file into instrument stems."
+        ))
+        stem_box.addWidget(QLabel("저장할 스템 / Stems to keep"))
+        self._stems_layout = QHBoxLayout()
+        stem_box.addLayout(self._stems_layout)
+        stem_box.addWidget(_desc_label(
+            "입력 파일에서 선택한 스템을 분리한 음원을 각각 생성합니다. / "
+            "Creates a separate audio file for each selected stem."
+        ))
+        root.addWidget(stem_group)
+
+        # --- 마이너스원 / Mix-minus -------------------------------------------
+        # Checkable group: sub-options are only selectable while the title
+        # checkbox is on; unchecked means "no mix-minus output".
+        self._minus_group = QGroupBox(
+            "마이너스원 (빼낼 스템) / Mix-minus (stems to remove)"
+        )
+        self._minus_group.setCheckable(True)
+        self._minus_group.setChecked(False)
+        minus_box = QVBoxLayout(self._minus_group)
+        self._minus_layout = QHBoxLayout()
+        minus_box.addLayout(self._minus_layout)
+        minus_box.addWidget(_desc_label(
+            "선택한 스템을 제외하고 믹스한 새로운 음원을 생성합니다. / "
+            "Creates a new mix with the selected stems removed."
+        ))
+        root.addWidget(self._minus_group)
+
+        # --- 드럼 분리 / Drum split -------------------------------------------
+        # Checkable group: drum model + keep-drums are only selectable while
+        # drum split is on; turning it on auto-checks keep-drums (see toggled).
+        self._drum_group = QGroupBox("드럼 분리 / Drum split")
+        self._drum_group.setCheckable(True)
+        self._drum_group.setChecked(True)
+        self._drum_group.toggled.connect(self._on_drum_split_toggled)
+        drum_box = QVBoxLayout(self._drum_group)
+        drum_form = QFormLayout()
+        self._drum_combo = QComboBox()
+        drum_form.addRow("드럼 모델 / Drum model", self._drum_combo)
+        drum_box.addLayout(drum_form)
+        drum_box.addWidget(_desc_label(
+            "드럼 스템을 킥/스네어 등 조각으로 나눕니다. 드럼 분리를 선택한 경우에만 사용됩니다. / "
+            "Splits the drums stem into kit pieces; used only when drum split is enabled."
+        ))
+        self._keep_drums_check = QCheckBox("드럼 스템 유지 / Keep drums stem")
+        self._keep_drums_check.setChecked(True)
+        drum_box.addWidget(self._keep_drums_check)
+        root.addWidget(self._drum_group)
+
+        # --- 기타 / Other -------------------------------------------------------
+        other_group = QGroupBox("기타 / Other")
+        other_row = QHBoxLayout(other_group)
+        other_row.addWidget(QLabel("장치 / Device"))
+        self._device_combo = QComboBox()
+        self._device_combo.addItems(list(VALID_CHOICES))
+        other_row.addWidget(self._device_combo)
+        self._overwrite_check = QCheckBox("덮어쓰기 / Overwrite")
+        self._verbose_check = QCheckBox("자세히 / Verbose")
+        other_row.addWidget(self._overwrite_check)
+        other_row.addWidget(self._verbose_check)
+        other_row.addStretch(1)
+        root.addWidget(other_group)
 
         # Run + open-output buttons.
         action_row = QHBoxLayout()
@@ -201,7 +243,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self._log, 1)
 
         self.setCentralWidget(central)
-        self.resize(680, 640)
+        self.resize(700, 860)
 
     def _populate_models(self) -> None:
         for info in registry.STEM_MODELS.values():
@@ -259,12 +301,13 @@ class MainWindow(QMainWindow):
         return "drums" in registry.resolve_stem(self._current_stem_id()).output_stems
 
     def _update_drum_controls_enabled(self) -> None:
-        """Drum-kit controls are only meaningful when the model emits 'drums'."""
-        has_drums = self._model_has_drums()
-        self._drum_combo.setEnabled(has_drums)
-        self._drum_split_check.setEnabled(has_drums)
-        # keep-drums-stem only matters while splitting an existing drums stem.
-        self._keep_drums_check.setEnabled(has_drums and self._drum_split_check.isChecked())
+        """The drum-split group is only meaningful when the model emits 'drums'."""
+        self._drum_group.setEnabled(self._model_has_drums())
+
+    def _on_drum_split_toggled(self, checked: bool) -> None:
+        # 드럼 분리를 켜면 드럼 스템 유지는 자동 on / drum split on → keep-drums auto-on.
+        if checked:
+            self._keep_drums_check.setChecked(True)
 
     # ---- file / folder selection -------------------------------------------
 
@@ -334,7 +377,10 @@ class MainWindow(QMainWindow):
                 "최소 한 개의 스템을 선택하세요. / Select at least one stem."
             )
             return None
-        minus = [name for name, cb in self._minus_checks.items() if cb.isChecked()]
+        # Mix-minus only applies while its group toggle is on.
+        minus: list[str] = []
+        if self._minus_group.isChecked():
+            minus = [name for name, cb in self._minus_checks.items() if cb.isChecked()]
 
         return build_options(
             input_path=Path(input_text),
@@ -345,7 +391,7 @@ class MainWindow(QMainWindow):
             minus=minus,
             fmt=self._fmt_combo.currentText(),
             device_choice=self._device_combo.currentText(),
-            drum_split=self._drum_split_check.isChecked() and self._model_has_drums(),
+            drum_split=self._drum_group.isChecked() and self._model_has_drums(),
             keep_drums_stem=self._keep_drums_check.isChecked(),
             overwrite=self._overwrite_check.isChecked(),
             verbose=self._verbose_check.isChecked(),
@@ -471,6 +517,12 @@ def main() -> int:
     # Stop tqdm's mp lock from spawning a duplicate (empty) GUI window.
     configure_multiprocessing()
     app = QApplication.instance() or QApplication(sys.argv)
+    # Window/taskbar icon (Linux/Windows; the macOS Dock uses the .app's .icns).
+    # Rendered from assets/icon.svg by packaging/make_icons.py; ships next to
+    # this module in both the wheel and the frozen bundle.
+    icon_path = Path(__file__).with_name("icon.png")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     # Expose the bundled ffmpeg on PATH once, before any separation runs.
     ffmpeg_path = audio.prepare_ffmpeg_path()
     window = MainWindow()

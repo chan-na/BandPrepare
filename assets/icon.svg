@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- BandPrepare app icon: one mix waveform fanning out into four colored stems.
+     Source of truth — assets/icon.icns / icon.ico and the GUI window icon PNG
+     are rendered from this file (see packaging/make_icons.py). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#1e1b4b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- macOS-style rounded square with the standard ~10% margin -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+
+  <!-- the mix: one big white waveform -->
+  <g fill="#ffffff">
+    <rect x="168" y="437" width="36" height="150" rx="18"/>
+    <rect x="222" y="372" width="36" height="280" rx="18"/>
+    <rect x="276" y="302" width="36" height="420" rx="18"/>
+    <rect x="330" y="347" width="36" height="330" rx="18"/>
+    <rect x="384" y="407" width="36" height="210" rx="18"/>
+    <rect x="438" y="447" width="36" height="130" rx="18"/>
+  </g>
+
+  <!-- fan-out: the mix splits into four stems -->
+  <g fill="none" stroke-width="44" stroke-linecap="round">
+    <path d="M 494 512 C 590 512 600 296 700 296" stroke="#f472b6"/>
+    <path d="M 494 512 C 590 512 600 440 700 440" stroke="#fbbf24"/>
+    <path d="M 494 512 C 590 512 600 584 700 584" stroke="#2dd4bf"/>
+    <path d="M 494 512 C 590 512 600 728 700 728" stroke="#60a5fa"/>
+  </g>
+
+  <!-- each stem is audio too: small matching waveforms -->
+  <g fill="#f472b6">
+    <rect x="728" y="261" width="30" height="70" rx="15"/>
+    <rect x="774" y="236" width="30" height="120" rx="15"/>
+    <rect x="820" y="254" width="30" height="84" rx="15"/>
+  </g>
+  <g fill="#fbbf24">
+    <rect x="728" y="405" width="30" height="70" rx="15"/>
+    <rect x="774" y="380" width="30" height="120" rx="15"/>
+    <rect x="820" y="398" width="30" height="84" rx="15"/>
+  </g>
+  <g fill="#2dd4bf">
+    <rect x="728" y="549" width="30" height="70" rx="15"/>
+    <rect x="774" y="524" width="30" height="120" rx="15"/>
+    <rect x="820" y="542" width="30" height="84" rx="15"/>
+  </g>
+  <g fill="#60a5fa">
+    <rect x="728" y="693" width="30" height="70" rx="15"/>
+    <rect x="774" y="668" width="30" height="120" rx="15"/>
+    <rect x="820" y="686" width="30" height="84" rx="15"/>
+  </g>
+</svg>

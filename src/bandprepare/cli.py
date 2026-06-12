@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  bandprepare song.wav -o out/ --format flac\n"
             "  bandprepare song.mp3 --stems vocals,drums,bass\n"
             "  bandprepare song.mp3 --minus bass        # 베이스 뺀 합본 / play-along\n"
-            "  bandprepare song.mp3 --stem-model htdemucs_ft --no-drum-split\n"
+            "  bandprepare song.mp3 --stem-model htdemucs_6s --no-drum-split\n"
             "  bandprepare song.mp3 --drum-model drumsep\n"
             "  bandprepare --list-models\n"
         ),
@@ -40,7 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("input", type=str, nargs="?", default=None,
                         help="입력 음원 파일 / input audio file (mp3, wav, flac, m4a, ...)")
     parser.add_argument("-o", "--output", type=str, default=None,
-                        help="출력 디렉터리 / output directory (default: ./output/<name>/)")
+                        help="출력 디렉터리 / output directory "
+                             "(default: <input dir>/BandPrepareOutput/<name>/)")
     parser.add_argument("--stem-model", choices=registry.stem_model_ids(),
                         default=registry.DEFAULT_STEM_MODEL,
                         help="악기 분리 모델 / instrument-separation model "
@@ -64,8 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="출력 포맷 / output format (default: wav)")
     parser.add_argument("--device", choices=VALID_CHOICES, default="auto",
                         help="연산 장치 / compute device (default: auto)")
-    parser.add_argument("--keep-drums-stem", action="store_true",
-                        help="세부 분리 후에도 원본 drums stem 보존 / keep the full drums stem too")
+    parser.add_argument("--keep-drums-stem", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="세부 분리 후에도 원본 drums stem 보존 (기본: 켜짐, "
+                             "--no-keep-drums-stem 로 끔) / keep the full drums stem too "
+                             "(default: on; disable with --no-keep-drums-stem)")
     parser.add_argument("--drum-wiener", type=float, default=None, metavar="ALPHA",
                         help="드럼 분리 α-Wiener 지수 (LarsNet 전용, 기본 1.0) / "
                              "alpha-Wiener exponent for drums (LarsNet only, default 1.0)")
@@ -97,7 +101,9 @@ def parse_stems(value: str, allowed: tuple[str, ...]) -> list[str]:
 
 
 def default_output_dir(input_path: str) -> Path:
-    return Path("output") / Path(input_path).stem
+    """A ``BandPrepareOutput/<name>`` folder next to the input file."""
+    src = Path(input_path)
+    return src.parent / "BandPrepareOutput" / src.stem
 
 
 def main(argv: list[str] | None = None) -> int:

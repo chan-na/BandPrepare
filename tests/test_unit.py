@@ -55,8 +55,10 @@ def test_parse_stems_rejects_stem_not_in_model():
 def test_registry_defaults_resolve():
     stem = registry.resolve_stem(registry.DEFAULT_STEM_MODEL)
     drum = registry.resolve_drum(registry.DEFAULT_DRUM_MODEL)
-    assert stem.kind == "stem" and stem.output_stems == STEM_ORDER
-    assert drum.kind == "drum" and drum.output_stems == DRUM_STEMS
+    assert stem.kind == "stem" and stem.id == "htdemucs_ft"
+    assert stem.output_stems == ("vocals", "drums", "bass", "other")
+    assert drum.kind == "drum" and drum.id == "mdx23c"
+    assert drum.output_stems == ("kick", "snare", "toms", "hihat", "ride", "crash")
 
 
 def test_registry_unknown_model_raises():
@@ -121,14 +123,19 @@ def test_parse_stems_4stem_model_rejects_guitar():
 
 
 def test_default_output_dir():
-    assert default_output_dir("/music/My Song.mp3") == Path("output") / "My Song"
+    # BandPrepareOutput/<name> next to the input file.
+    assert default_output_dir("/music/My Song.mp3") == Path("/music/BandPrepareOutput/My Song")
+    assert default_output_dir("song.mp3") == Path("BandPrepareOutput") / "song"
 
 
 def _opts(**kw):
+    # drum_model pinned to larsnet: these tests assert its 5-piece DRUM_STEMS
+    # layout regardless of the registry default (mdx23c).
     base = dict(
         input_path=Path("song.wav"),
         output_dir=Path("out"),
         stems=list(STEM_ORDER),
+        drum_model="larsnet",
     )
     base.update(kw)
     return Options(**base)
@@ -140,8 +147,8 @@ def test_planned_outputs_full_with_drum_split():
     # non-drum instruments
     assert "out/instruments/vocals.wav" in names
     assert "out/instruments/bass.wav" in names
-    # drums split into pieces; full drums stem NOT kept by default
-    assert "out/instruments/drums.wav" not in names
+    # drums split into pieces; the full drums stem is also kept by default
+    assert "out/instruments/drums.wav" in names
     for piece in DRUM_STEMS:
         assert f"out/drums/{piece}.wav" in names
 
@@ -151,14 +158,23 @@ def test_planned_outputs_mdx23c_six_pieces():
     names = {p.as_posix() for p in files}
     for piece in ("kick", "snare", "toms", "hihat", "ride", "crash"):
         assert f"out/drums/{piece}.wav" in names
-    # drums stem is consumed by stage 2, not kept by default
+    # the full drums stem is kept by default alongside the pieces
+    assert "out/instruments/drums.wav" in names
+
+
+def test_planned_outputs_no_keep_drums_stem():
+    files = planned_outputs(_opts(keep_drums_stem=False))
+    names = {p.as_posix() for p in files}
     assert "out/instruments/drums.wav" not in names
 
 
-def test_planned_outputs_keep_drums_stem():
-    files = planned_outputs(_opts(keep_drums_stem=True))
-    names = {p.as_posix() for p in files}
-    assert "out/instruments/drums.wav" in names
+def test_cli_keep_drums_stem_default_on():
+    from bandprepare.cli import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["song.mp3"]).keep_drums_stem is True
+    assert parser.parse_args(["song.mp3", "--no-keep-drums-stem"]).keep_drums_stem is False
+    assert parser.parse_args(["song.mp3", "--keep-drums-stem"]).keep_drums_stem is True
 
 
 def test_planned_outputs_no_drum_split():
@@ -508,12 +524,19 @@ def test_mainwindow_stem_checkboxes_and_drum_controls():
     default_stems = registry.resolve_stem(registry.DEFAULT_STEM_MODEL).output_stems
     assert tuple(win._stem_checks) == default_stems
     assert all(cb.isChecked() for cb in win._stem_checks.values())
-    # Mix-minus checkboxes mirror the stems but start unchecked.
+    # Mix-minus checkboxes mirror the stems; the group toggle starts off, which
+    # disables its children.
     assert tuple(win._minus_checks) == default_stems
+    assert not win._minus_group.isChecked()
+    assert not any(cb.isEnabled() for cb in win._minus_checks.values())
+    win._minus_group.setChecked(True)
+    assert all(cb.isEnabled() for cb in win._minus_checks.values())
     assert not any(cb.isChecked() for cb in win._minus_checks.values())
-    # A 6-stem model has drums -> drum controls enabled.
+    win._minus_group.setChecked(False)
+    # The default model has drums -> drum-split group enabled and on.
+    assert win._drum_group.isEnabled()
+    assert win._drum_group.isChecked()
     assert win._drum_combo.isEnabled()
-    assert win._drum_split_check.isEnabled()
     assert win._keep_drums_check.isEnabled()
 
     # Switch to a 2-stem vocals/instrumental model (no drums).
@@ -523,8 +546,8 @@ def test_mainwindow_stem_checkboxes_and_drum_controls():
     assert tuple(win._stem_checks) == ("vocals", "other")
     assert tuple(win._minus_checks) == ("vocals", "other")
     # Drum controls disabled when the model emits no drums stem.
+    assert not win._drum_group.isEnabled()
     assert not win._drum_combo.isEnabled()
-    assert not win._drum_split_check.isEnabled()
     assert not win._keep_drums_check.isEnabled()
 
     # Switch back to a 6-stem model -> drum controls re-enabled.
@@ -532,9 +555,69 @@ def test_mainwindow_stem_checkboxes_and_drum_controls():
     assert idx >= 0
     win._stem_combo.setCurrentIndex(idx)
     assert "drums" in win._stem_checks
+    assert win._drum_group.isEnabled()
     assert win._drum_combo.isEnabled()
-    assert win._drum_split_check.isEnabled()
     assert win._keep_drums_check.isEnabled()
+
+
+def test_mainwindow_drum_split_off_disables_children_and_autochecks_keep():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    # Drum split defaults on -> keep-drums auto-on.
+    assert win._drum_group.isChecked()
+    assert win._keep_drums_check.isChecked()
+
+    # Turning drum split off disables its sub-options.
+    win._drum_group.setChecked(False)
+    assert not win._drum_combo.isEnabled()
+    assert not win._keep_drums_check.isEnabled()
+    win._keep_drums_check.setChecked(False)
+
+    # Turning drum split back on re-checks keep-drums automatically.
+    win._drum_group.setChecked(True)
+    assert win._keep_drums_check.isChecked()
+    assert win._drum_combo.isEnabled()
+
+
+def test_mainwindow_minus_group_off_yields_no_minus():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    win._input_edit.setText("/music/song.mp3")
+    # A stem checked while the group toggle is off must not produce a mix-minus.
+    win._minus_checks["bass"].setChecked(True)
+    opts = win._collect_options()
+    assert opts is not None
+    assert opts.minus == []
+
+
+def test_gui_window_icon_ships_with_package():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from PySide6.QtGui import QIcon
+
+    from bandprepare.gui import app as gui_app
+
+    # gui/app.py resolves the icon next to its own module; the PNG is generated
+    # from assets/icon.svg by packaging/make_icons.py and must stay committed.
+    icon_png = Path(gui_app.__file__).with_name("icon.png")
+    assert icon_png.exists()
+    assert not QIcon(str(icon_png)).isNull()
+
+
+def test_mainwindow_set_input_prefills_default_output():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    win._set_input("/music/My Song.mp3")
+    assert win._output_edit.text() == str(Path("/music/BandPrepareOutput/My Song"))
 
 
 def test_mainwindow_collect_options_reads_widgets():
@@ -545,9 +628,10 @@ def test_mainwindow_collect_options_reads_widgets():
     win = MainWindow()
     win._input_edit.setText("/music/My Song.mp3")
     win._output_edit.setText("/out/My Song")
-    # Keep only vocals; remove bass via mix-minus.
+    # Keep only vocals; remove bass via mix-minus (group toggle must be on).
     for name, cb in win._stem_checks.items():
         cb.setChecked(name == "vocals")
+    win._minus_group.setChecked(True)
     win._minus_checks["bass"].setChecked(True)
     win._fmt_combo.setCurrentText("mp3")
     win._device_combo.setCurrentText("cpu")
@@ -560,6 +644,11 @@ def test_mainwindow_collect_options_reads_widgets():
     assert opts.minus == ["bass"]
     assert opts.fmt == "mp3"
     assert opts.device_choice == "cpu"
+    # New defaults flow through: drum split on with keep-drums auto-on.
+    assert opts.stem_model == "htdemucs_ft"
+    assert opts.drum_model == "mdx23c"
+    assert opts.drum_split is True
+    assert opts.keep_drums_stem is True
 
 
 def test_mainwindow_collect_options_requires_input():
