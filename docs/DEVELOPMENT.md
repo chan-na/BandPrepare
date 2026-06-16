@@ -83,11 +83,33 @@ uv pip install -e ".[dev]"        # 테스트용 pytest
 > 아키텍처와 설계 배경(특히 호환성 때문에 audio-separator를 쓰지 않은 이유)은
 > [ARCHITECTURE.md](../ARCHITECTURE.md) 를 참고하세요.
 
-## GPU 가속 (CUDA) — 소스 설치
+## GPU 가속 (CUDA)
 
-포터블 앱의 **Linux/Windows 번들은 CPU 전용 torch**라 CUDA 가속을 쓸 수 없습니다(용량을
-작게 유지하려는 의도). NVIDIA GPU로 몇 배 빠르게 돌리려면 **소스에서 CUDA 빌드 torch를
-직접 설치**하세요. NVIDIA 드라이버가 미리 설치돼 있어야 합니다.
+NVIDIA GPU(**Linux · Windows**)에서 몇 배 빠르게 돌리는 두 가지 방법입니다. 어느 쪽이든 NVIDIA
+드라이버는 미리 설치돼 있어야 합니다. macOS는 CUDA가 없습니다 — Apple Silicon은 `--device mps`
+로 GPU(Metal)를 씁니다(`auto` 가 자동 선택, 포터블 macOS 앱도 동일). Intel Mac은 MPS가 느려
+`auto` 가 일부러 CPU를 선택합니다.
+
+### 방법 A — `…-cuda` 포터블 번들 받기 (가장 쉬움, 설치 불필요)
+
+[Releases](../../../releases)에서 `bandprepare-linux-cuda-…` 또는 `bandprepare-windows-cuda-…`
+를 받습니다. 용량(2 GiB+) 때문에 **여러 조각(`.001`, `.002`, …)으로 나뉘어** 올라오니, 받은 뒤
+하나로 합쳐 압축을 풉니다(추가 프로그램 불필요):
+
+```bash
+# Linux / macOS — 조각을 합쳐 하나의 .tar.gz 로 만든 뒤 풀기
+cat bandprepare-linux-cuda-*.tar.gz.* > bandprepare-linux-cuda.tar.gz
+tar xzf bandprepare-linux-cuda.tar.gz
+```
+```bat
+:: Windows — 명령 프롬프트(cmd)에서 copy /b 로 합친 뒤 압축 해제
+copy /b bandprepare-windows-cuda-<버전>.zip.001 + bandprepare-windows-cuda-<버전>.zip.002 bandprepare-windows-cuda.zip
+```
+
+기본값 `auto` 가 CUDA를 자동 선택하므로 그대로 실행하면 GPU로 돕니다(`--device cuda` 로 명시
+가능). GPU가 없으면 CPU로 폴백하므로 `…-cuda` 번들은 `…-cpu-only` 번들의 **상위호환**입니다.
+
+### 방법 B — 소스에서 CUDA torch 직접 설치 (개발자 · 커스터마이즈)
 
 ```bash
 # 1) CUDA 빌드 torch 설치 (드라이버에 맞는 CUDA 버전 선택 — 예: cu121 = CUDA 12.1)
@@ -101,9 +123,10 @@ pip install -e .
 bandprepare 내곡.mp3 --device cuda
 ```
 
-> 💡 **macOS**는 CUDA가 없습니다. Apple Silicon은 `--device mps` 로 GPU(Metal)를 씁니다
-> (포터블 macOS 앱도 동일). Intel Mac은 MPS가 느려 `auto` 가 일부러 CPU를 선택합니다.
-> CUDA는 **Linux / Windows + NVIDIA GPU** 전용입니다.
+> 💡 **직접 CUDA 포터블 번들을 빌드**하려면: 위 1)로 cu121 torch를 설치한 venv에서 그대로
+> `pyinstaller --noconfirm bandprepare.spec` 를 돌리면 됩니다. spec이 설치된 `nvidia-*` 런타임
+> 라이브러리를 자동으로 동봉합니다(CPU 빌드면 자동 생략 — 하나의 spec이 두 변형 모두 빌드).
+> 릴리스용 분할(2 GiB 한도)은 CI가 처리합니다([ARCHITECTURE.md](../ARCHITECTURE.md) §12 D9).
 
 ## 개발 / Development
 
@@ -153,10 +176,18 @@ pyinstaller --noconfirm bandprepare.spec  # → dist/bandprepare/  (~1.4 GB)
   `open dist/BandPrepare.app`(또는 더블클릭)하면 **터미널 없이** 창이 바로 뜹니다(spec의 `BUNDLE`,
   `sys.platform == "darwin"` 한정). CI는 macOS에서 이 `.app`을 릴리스 자산으로 패키징하고
   (Linux·Windows는 onedir 폴더), CLI는 `.app/Contents/MacOS/bandprepare-cli` 에 함께 들어갑니다.
-- 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml`. macOS `.app`·바이너리는 PyInstaller가
-  **ad-hoc 서명**(무료, 인증서 불필요)해 실행은 되지만, Gatekeeper의 "확인되지 않은 개발자" 경고를
-  없애려면 **유료 Developer ID 서명 + 공증(notarize)** 이 필요합니다(미적용 — 아래 "다운로드한 릴리스
-  첫 실행" 참고). 배포·패키징 설계 결정은 [ARCHITECTURE.md](../ARCHITECTURE.md) §12 참고.
+- **GPU(CUDA) 번들**: 위 빌드는 설치된 torch를 따라갑니다 — CPU torch면 `…-cpu-only`, cu121 torch면
+  CUDA 번들이 나옵니다. 즉 cu121 torch를 설치한 venv에서(["GPU 가속 (CUDA)" 방법 B](#gpu-가속-cuda))
+  같은 `bandprepare.spec` 을 그대로 빌드하면 됩니다. spec이 `nvidia-*` 런타임 라이브러리를 자동 동봉합니다.
+- 멀티플랫폼 빌드 매트릭스는 `.github/workflows/build.yml` — **번들 6종**을 빌드합니다:
+  `macos-arm64` · `macos-x86_64`(self-hosted Intel) · `linux-cpu-only` · `windows-cpu-only`는 매
+  push/PR에서(`build` 잡), **`linux-cuda` · `windows-cuda`(cu121)** 는 태그·수동 디스패치에서만
+  (`build-cuda` 잡 — CUDA 휠/디스크 부담 때문). CUDA 번들은 GitHub 자산당 2 GiB 한도를 넘어
+  **`.001`/`.002` 조각으로 분할**해 첨부합니다([ARCHITECTURE.md](../ARCHITECTURE.md) §12 D9).
+- macOS `.app`·바이너리는 PyInstaller가 **ad-hoc 서명**(무료, 인증서 불필요)해 실행은 되지만,
+  Gatekeeper의 "확인되지 않은 개발자" 경고를 없애려면 **유료 Developer ID 서명 + 공증(notarize)** 이
+  필요합니다(미적용 — 아래 "다운로드한 릴리스 첫 실행" 참고). 배포·패키징 설계 결정은
+  [ARCHITECTURE.md](../ARCHITECTURE.md) §12 참고.
 
 ## 다운로드한 릴리스 첫 실행 (서명 경고 우회)
 

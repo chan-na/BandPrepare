@@ -217,6 +217,10 @@ MIT)을 `--drum-model drumsep` 로 선택할 수 있습니다.
   `--drum-split` 사용 시 MDX23C 약 438 MB 추가).
 - 2단계(드럼 세부 분리)는 기본으로 꺼져 있습니다(`--drum-split` 로 켬).
   LarsNet 사용 시 `--no-drum-wiener` 로 드럼 단계를 더 가속할 수 있습니다.
+- **CUDA 가속**(Linux · Windows + NVIDIA GPU)은 `…-cuda` 포터블 번들을 받거나
+  ([CLI GPU 가속](CLI.md#-gpu-가속--어떤-장치를-쓰나)), 소스에서 CUDA torch를 설치해
+  사용합니다([개발 가이드](DEVELOPMENT.md#gpu-가속-cuda)). macOS는 CUDA가 없고 Apple
+  Silicon은 MPS(Metal)를 씁니다.
 
 ## 오류 처리 / Exit codes
 

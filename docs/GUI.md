@@ -14,7 +14,9 @@
 
 1. [Releases](../../../releases)에서 내 OS용 파일을 받습니다(자세한 파일 이름·표는
    [CLI 가이드 STEP 2](CLI.md#step-2-받아서-준비하기-포터블-앱) 참고).
-   `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-x86_64` · `windows-x86_64`
+   `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-cpu-only` · `windows-cpu-only`
+   — **NVIDIA GPU가 있으면** `linux-cuda` / `windows-cuda`(CUDA 가속). `-cuda` 는 용량 때문에
+   여러 조각으로 나뉘어 있어 받은 뒤 합쳐야 합니다([CLI STEP 2-1](CLI.md#step-2-받아서-준비하기-포터블-앱)).
 2. 압축을 풀면 — **macOS는 `BandPrepare.app`**, **Linux·Windows는 `bandprepare/` 폴더**가 나옵니다.
 3. **첫 실행 경고 우회**(한 번만):
    - **macOS**: `BandPrepare.app` 을 **우클릭 → 열기 → 열기**. (또는 터미널에서
@@ -65,6 +67,10 @@
 GUI의 모델 선택, 스템 체크박스, 마이너스원, 포맷·장치 옵션은 모두 CLI 옵션과 1:1로
 대응합니다. 각 옵션이 무슨 일을 하는지(연습 목적별 레시피, 모델별 스템·라이선스,
 GPU 가속 등)는 [CLI 가이드](CLI.md)를, 옵션 전체 목록은 [레퍼런스의 "옵션 전체"](REFERENCE.md#옵션-전체--all-options)를 참고하세요.
+
+> 🚀 **GPU 가속**: `…-cuda` 번들로 실행하면 **장치 / Device** 드롭다운의 기본값 `auto` 가 NVIDIA
+> GPU(CUDA)를 자동으로 선택합니다(명시하려면 `cuda`). 애플 실리콘은 `mps`(Metal). GPU가 없으면
+> 자동으로 CPU로 폴백합니다.
 
 ---
 
