@@ -36,15 +36,39 @@
 |-----------|-----------|
 | **맥 (애플 실리콘 · M1/M2/M3…)** | `bandprepare-macos-arm64-<버전>.zip` |
 | **맥 (인텔)** | `bandprepare-macos-x86_64-<버전>.zip` |
-| **리눅스 (x86_64)** | `bandprepare-linux-x86_64-<버전>.tar.gz` |
-| **윈도우 (x86_64)** | `bandprepare-windows-x86_64-<버전>.zip` |
+| **리눅스 (NVIDIA GPU 없음)** | `bandprepare-linux-cpu-only-<버전>.tar.gz` |
+| **리눅스 + NVIDIA GPU** | `bandprepare-linux-cuda-<버전>.tar.gz.001` · `.002` … (여러 조각 — 아래 2-1 참고) |
+| **윈도우 (NVIDIA GPU 없음)** | `bandprepare-windows-cpu-only-<버전>.zip` |
+| **윈도우 + NVIDIA GPU** | `bandprepare-windows-cuda-<버전>.zip.001` · `.002` … (여러 조각 — 아래 2-1 참고) |
+
+> 🚀 **NVIDIA GPU가 있나요?** `…-cuda` 번들을 받으면 GPU(CUDA) 가속을 **설치 없이** 바로 씁니다
+> (`auto` 가 자동으로 GPU 선택, GPU가 없으면 CPU로 폴백). 다만 용량이 커서 **여러 조각으로 나뉘어**
+> 올라오니, 받은 뒤 하나로 합쳐야 합니다(아래 **2-1**). GPU가 없다면 더 가벼운 `…-cpu-only` 를 받으세요.
 
 > 🍎 macOS는 **`BandPrepare.app`**(GUI 앱) 하나로 배포됩니다. CLI도 그 앱 안에 함께 들어 있어요.
+> (macOS에는 CUDA가 없고, 애플 실리콘은 Metal(MPS)을 씁니다 — `-cuda` 번들은 macOS용이 아닙니다.)
 
 > 📌 릴리스는 검토를 위해 **비공개(draft)로 먼저 올라옵니다.** 자산이 아직 안 보이면
 > 공개 전일 수 있습니다 — 이럴 땐 [소스에서 설치](DEVELOPMENT.md)해 쓰세요.
 
 ### 2) 압축 풀기
+
+> #### 2-1) `…-cuda` 번들을 받았다면 — 먼저 조각 합치기
+>
+> CUDA 번들은 용량 때문에 `.001`, `.002` … 여러 조각으로 나뉘어 있습니다. 받은 조각을 **순서대로
+> 하나로 이어 붙인 뒤** 평소처럼 압축을 풉니다(추가 프로그램 불필요). `…-cpu-only`·macOS 번들은
+> 이 단계가 필요 없습니다.
+>
+> ```bash
+> # Linux / macOS — 조각을 합쳐 하나의 .tar.gz 로 만든 뒤 풀기
+> cat bandprepare-linux-cuda-*.tar.gz.* > bandprepare-linux-cuda.tar.gz
+> tar xzf bandprepare-linux-cuda.tar.gz        # → bandprepare/ 폴더
+> ```
+> ```bat
+> :: Windows — 명령 프롬프트(cmd)에서 copy /b 로 합친 뒤 압축 해제
+> copy /b bandprepare-windows-cuda-<버전>.zip.001 + bandprepare-windows-cuda-<버전>.zip.002 bandprepare-windows-cuda.zip
+> :: 조각이 .003 이상 더 있으면 + 로 순서대로 이어 붙이세요. 이후 탐색기에서 우클릭 → 압축 풀기
+> ```
 
 **macOS**: 압축을 풀면 **`BandPrepare.app`** 이 나옵니다. CLI는 그 앱 패키지 안에 있습니다 —
 `BandPrepare.app/Contents/MacOS/bandprepare-cli`. 매번 긴 경로를 치지 않도록 앱 옆에 **단축
@@ -314,10 +338,15 @@ bandprepare-cli 내곡.mp3 --drum-split --drum-model larsnet --no-drum-wiener
 
 ### 🚀 GPU 가속 — 어떤 장치를 쓰나
 
-- **포터블 앱의 Linux / Windows 번들은 CPU 전용 torch**를 씁니다(용량을 작게 유지 — 어디서나
-  설치 없이 바로 실행). 즉 **포터블에서는 NVIDIA GPU(CUDA) 가속을 쓸 수 없습니다.**
-  CUDA로 몇 배 빠르게 돌리려면 **소스에서 CUDA 빌드 torch를 직접 설치**하는 경로를 쓰세요
-  → [개발 가이드의 "GPU 가속 (CUDA)"](DEVELOPMENT.md#gpu-가속-cuda--소스-설치).
+- **NVIDIA GPU (Linux · Windows)**: `…-cuda` 포터블 번들을 받으면 GPU(CUDA) 가속을 **설치 없이**
+  바로 씁니다. 기본값 `auto` 가 CUDA를 자동 선택하므로 옵션을 따로 줄 필요가 없습니다(명시하려면
+  `--device cuda`). GPU가 없으면 자동으로 CPU로 폴백하므로, `-cuda` 번들은 CPU 전용 번들의 상위호환입니다.
+  ```bash
+  bandprepare-cli 내곡.mp3 --device cuda     # NVIDIA GPU 가속 (cuda 번들)
+  ```
+  > `-cuda` 번들은 용량 때문에 여러 조각으로 나뉘어 배포됩니다 — 받는 법·합치는 법은 위 **STEP 2**를
+  > 참고하세요. GPU가 없다면 더 가벼운 `…-cpu-only` 번들을 받으면 됩니다. 소스에서 직접 CUDA torch를
+  > 골라 설치하려면 → [개발 가이드의 "GPU 가속 (CUDA)"](DEVELOPMENT.md#gpu-가속-cuda).
 - **macOS 포터블 앱**은 Apple Silicon에서 `--device mps` 로 GPU(Metal) 가속을 씁니다
   (`auto` 가 자동 선택). macOS에는 CUDA가 없습니다.
   ```bash
@@ -342,7 +371,7 @@ bandprepare-cli 내곡.mp3 --overwrite
 | `command not found` / `bandprepare-cli: No such file` | Linux·Windows는 압축 푼 `bandprepare/` 폴더 안에서 `./bandprepare-cli` 로 실행하거나 전체 경로 사용. macOS는 단축 링크(STEP 2-2)나 `BandPrepare.app/Contents/MacOS/bandprepare-cli`. |
 | macOS: `library load disallowed by system policy` 또는 앱이 안 열림 | 다운로드 격리 때문 → `BandPrepare.app` **우클릭 → 열기**, 또는 `xattr -dr com.apple.quarantine BandPrepare.app` (STEP 2-3 참고) |
 | Linux/macOS: `Permission denied` | 실행 권한 부여 → `chmod +x ./bandprepare-cli` |
-| 너무 느림 | GPU가 없으면 정상입니다. 2단계(드럼 세부 분리)는 기본으로 꺼져 있으니 `--drum-split` 없이 돌리거나 짧은 구간으로 시험 |
+| 너무 느림 | GPU가 없으면 정상입니다. **NVIDIA GPU가 있으면 `…-cuda` 번들**로 몇 배 빨라집니다(STEP 2). 2단계(드럼 세부 분리)는 기본으로 꺼져 있으니 `--drum-split` 없이 돌리거나 짧은 구간으로 시험 |
 | 첫 실행이 멈춘 듯함 | 모델(수백 MB) 내려받는 중일 수 있음. 네트워크 확인 후 기다리기 |
 | 드럼 모델 다운로드 실패 | 네트워크 일시 문제 — 다시 실행하면 이어집니다. `larsnet`/`drumsep` 은 **Google Drive**에서 받으므로 사내망 등에서 막힐 수 있습니다(기본 `mdx23c` 는 HuggingFace) |
 | 모델 다운로드가 `CERTIFICATE_VERIFY_FAILED` (SSL)로 실패 | 최신 릴리스는 자동 해결됨. 구버전 번들이면 임시로 앞에 `SSL_CERT_FILE="<받은폴더>/_internal/certifi/cacert.pem"` 를 붙여 실행 |

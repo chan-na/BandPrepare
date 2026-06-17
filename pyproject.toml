@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bandprepare"
-version = "0.2.0"
+version = "0.3.0"
 description = "Split a song into per-instrument practice tracks, with detailed drum-kit separation."
 readme = "README.md"
 requires-python = ">=3.10"

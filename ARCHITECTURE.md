@@ -336,7 +336,7 @@ CLI와 같은 코어(`pipeline.run`)를 호출하므로 두 진입점이 한 번
 | D4 | ffmpeg = **`imageio-ffmpeg` 동봉**(LGPL) | 사용자 `brew install ffmpeg` 제거. 단 ffprobe가 없고 바이너리가 버전 접미사라, 압축 입력은 `audio._decode_with_ffmpeg`(f32le PCM, ffprobe 불필요)로 직접 디코딩(§9 참고) |
 | D5 | 모델 가중치는 **런타임 다운로드 유지** | 번들 ~2GB 절감. 캐시는 번들 바깥(`BANDPREPARE_CACHE`→`XDG_CACHE_HOME`→`~/.cache`)이라 frozen 앱에서 쓰기 가능 |
 | D6 | RoFormer **동봉**(초기엔 제외 → 해소) | `import librosa`가 numba/llvmlite JIT 스택을 끌어와 동결이 까다로웠음 → Mel-Band의 유일한 librosa 사용(`filters.mel`)을 순수 numpy로 `vendor/roformer/_mel.py`에 벤더링(§6)해 그래프에서 제거. BS·Mel **양쪽 동봉** |
-| D7 | **플랫폼별 빌드 필수** | torch가 macOS universal2 휠 미제공, Intel-mac은 torch 2.2.2가 마지막 → mac x86_64 / arm64 / Linux / Win 각각 빌드 |
+| D7 | **플랫폼별 빌드 필수** | torch가 macOS universal2 휠 미제공, Intel-mac은 torch 2.2.2가 마지막 → mac x86_64 / arm64 / Linux / Win 각각 빌드. Linux·Win은 CPU·CUDA 두 변형(D9)이라 총 **6종** |
 | D8 | 한 번들에 **CLI + GUI 두 바이너리** | 같은 COLLECT의 라이브러리(torch 등)를 공유 → CLI 추가 비용은 자기 PYZ+부트스트랩뿐 |
 
 ### 빌드 & 릴리스
@@ -344,12 +344,15 @@ CLI와 같은 코어(`pipeline.run`)를 호출하므로 두 진입점이 한 번
 - 스펙: `bandprepare.spec`(onedir, 엔트리=GUI `packaging/bandprepare_gui.py`, CLI는
   같은 COLLECT 위 두 번째 EXE). `collect_all`로 torch/torchaudio/demucs/soundfile/
   imageio_ffmpeg/PySide6, vendor YAML config를 `datas`로 동봉, RoFormer 모델·deps는
-  `hiddenimports`(지연 import라 명시).
-- CI: `.github/workflows/build.yml`가 4종을 빌드 — linux-x86_64 · macos-arm64 ·
-  windows-x86_64는 GitHub-호스티드, **macos-x86_64(Intel)은 self-hosted 러너**(별도
-  `build-macos-intel` 잡, 태그/수동 디스패치 게이팅). 각 잡이 **동결 self-test**
-  (`BANDPREPARE_GUI_SELFTEST=1`, 오프스크린)로 임포트·동봉 ffmpeg·캐시 쓰기·RoFormer
-  인스턴스화를 검증한 뒤, `v*` 태그면 번들을 draft GitHub Release에 첨부.
+  `hiddenimports`(지연 import라 명시). CUDA 빌드면 별도 `nvidia-*-cu12` 런타임 패키지를
+  `collect_all`로 **조건부 동봉**(설치 시에만, CPU 빌드는 자동 생략 → 하나의 spec이 두 변형 모두 빌드, D9).
+- CI: `.github/workflows/build.yml`가 **6종**을 빌드. GitHub-호스티드 `build` 매트릭스는 매
+  push/PR에서 **linux-cpu-only · windows-cpu-only · macos-arm64**(CPU torch)를, 게이팅된
+  잡 둘은 태그·수동 디스패치에서만 — **macos-x86_64(Intel)은 self-hosted 러너**(`build-macos-intel`
+  잡), **linux-cuda · windows-cuda(cu121)는 `build-cuda` 잡**(CUDA 휠/디스크 부담 때문에 PR 제외).
+  각 잡이 **동결 self-test**(`BANDPREPARE_GUI_SELFTEST=1`, 오프스크린)로 임포트·동봉 ffmpeg·캐시
+  쓰기·RoFormer 인스턴스화를 검증한 뒤, `v*` 태그면 번들을 draft GitHub Release에 첨부(CUDA는
+  2 GiB 한도 때문에 `.001`/`.002` 분할 첨부 — D9).
 
 ### 코드서명 / Gatekeeper · SmartScreen (미적용)
 
@@ -366,22 +369,28 @@ CLI와 같은 코어(`pipeline.run`)를 호출하므로 두 진입점이 한 번
 - **Windows**: SmartScreen "추가 정보 → 실행". 일부 백신이 PyInstaller 바이너리를 오탐.
 - **Linux**: 코드서명 개념 없음 — 경고 없이 실행.
 
-### torch 휠: 포터블 번들은 CPU, GPU는 pip 경로 (D9)
+### torch 휠: CPU·CUDA 두 변형 + 2 GiB 한도는 분할로 우회 (D9)
 
-초기엔 GPU 가속 유지를 위해 Linux/Windows도 기본 PyPI(CUDA) 휠을 번들했으나, **Linux
-CUDA 번들의 `.tar.gz`가 GitHub Release의 자산당 2 GiB 한도를 초과**(raw ~3.5 GB, CUDA
-런타임이 ~2 GB)해 릴리스 첨부가 실패했습니다. CUDA는 `libtorch_cuda.so`에 컴파일돼 있어
-모델 가중치처럼 런타임에 lazy 다운로드해 붙일 수 없고(frozen 프로세스가 이미 번들 torch를
-import한 상태), 번들 자체도 한도를 못 맞춥니다.
+CUDA는 `libtorch_cuda.so`(Linux는 별도 `nvidia-*-cu12` 런타임 패키지)에 컴파일돼 있어,
+모델 가중치처럼 런타임에 lazy 다운로드해 붙일 수 없습니다(frozen 프로세스가 이미 번들 torch를
+import한 상태 — CPU 번들에 CUDA를 나중에 끼워 넣을 수 없음). 그래서 GPU 지원은 **빌드 시점에
+CUDA torch로 번들을 굽는 수밖에** 없습니다. 그런데 **CUDA 번들의 `.tar.gz`는 GitHub Release의
+자산당 2 GiB 한도를 초과**(raw ~3.5 GB, CUDA 런타임 ~2 GB)해 단일 자산 첨부가 실패합니다.
 
-→ **포터블 번들은 Linux/Windows 모두 CPU 전용 torch**(`--index-url .../whl/cpu`)로 빌드해
-플랫폼당 ~500 MB로 통일합니다(2 GiB 통과, Windows는 기존 기본 휠도 사실상 CPU라 일관). CI의
-`Install CPU-only torch (Linux/Windows)` 스텝이 pyproject 핀과 동일 버전으로 선설치하므로
-editable 설치가 torch를 건드리지 않습니다. macOS는 CUDA 휠이 없어(MPS/CPU) 기본 그대로.
+→ Linux/Windows를 **두 변형으로 배포**합니다:
+- **`…-cpu-only`**(`--index-url .../whl/cpu`): 플랫폼당 ~500 MB, 단일 자산. 매 push/PR `build`
+  매트릭스에서 빌드. Windows는 기본 휠도 사실상 CPU라 일관. macOS는 CUDA 휠이 없어(MPS/CPU) 기본 그대로.
+- **`…-cuda`**(`--index-url .../whl/cu121`): `build-cuda` 잡(태그/수동 디스패치만 — CUDA 휠 ~2.5 GB
+  + 빌드 산출로 hosted 러너 디스크가 빠듯해 PR마다 돌리지 않음). 2 GiB 한도는 아카이브를 **원시
+  바이트로 `.001`/`.002` 조각 분할**(Linux `split -b 1900M`, Windows `7z -v1900m`)해 우회합니다.
+  사용자는 조각을 `cat`(Linux/mac)·`copy /b`(Windows)로 이어 붙인 뒤 평소대로 압축을 풉니다.
 
-**GPU(CUDA)는 pip 경로로 제공**: 사용자가 `pip install torch --index-url .../whl/cu121`로
-CUDA 빌드를 직접 설치하면 됩니다(필요할 때만 CUDA 런타임 다운로드 — frozen 번들이 아닌 실제
-venv라 정상 동작). Linux/Windows + NVIDIA 전용. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#gpu-가속-cuda--소스-설치) "GPU 가속 (CUDA)" 참고.
+CUDA 번들은 GPU가 없으면 CPU로 폴백하므로 CPU 번들의 상위호환입니다(`device.py` `auto`). 하나의
+`bandprepare.spec`이 두 변형을 모두 빌드합니다 — CUDA 빌드면 설치된 `nvidia-*` 런타임을 조건부로
+`collect_all`하고, CPU 빌드면 `import nvidia` 실패로 자동 생략합니다.
+
+**소스 pip 경로도 유지**(개발자용): `pip install torch --index-url .../whl/cu121`로 CUDA 빌드를
+직접 설치해 소스 실행/번들 빌드. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#gpu-가속-cuda) "GPU 가속 (CUDA)" 참고.
 
 ### 동결 번들의 TLS 인증서 (certifi)
 

@@ -47,6 +47,28 @@ for pkg in ("torch", "torchaudio", "demucs", "soundfile", "imageio_ffmpeg", "PyS
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
 
+# CUDA runtime libs (the linux-cuda / windows-cuda bundles). torch's CUDA (cu*)
+# wheels ship the GPU runtime as SEPARATE top-level `nvidia-*-cu12` packages
+# (libcublas/libcudnn/libcudart/... under site-packages/nvidia/<lib>/lib), which
+# collect_all("torch") above does NOT pull in — so a Linux CUDA bundle would be
+# missing them and fail at runtime. Collect every installed `nvidia.*` subpackage
+# when present. CPU-only builds have no `nvidia` package, so the import fails and
+# this is skipped: ONE spec serves all six bundles (cpu-only + cuda × linux/win,
+# mac). On Windows the CUDA DLLs live inside torch/lib and are already collected,
+# so `nvidia` is typically absent there too — this loop is a no-op then.
+try:
+    import importlib
+    import pkgutil
+
+    nvidia = importlib.import_module("nvidia")
+    for _mod in pkgutil.iter_modules(nvidia.__path__, "nvidia."):
+        n_datas, n_binaries, n_hidden = collect_all(_mod.name)
+        datas += n_datas
+        binaries += n_binaries
+        hiddenimports += n_hidden
+except ImportError:
+    pass  # CPU-only build — no CUDA runtime to bundle.
+
 # Our backends are imported lazily inside registry loader closures, so name them
 # explicitly. RoFormer modules are deliberately omitted (see header / D6) and are
 # listed under ``excludes`` below.
@@ -205,6 +227,6 @@ if sys.platform == "darwin":
         info_plist={
             "NSHighResolutionCapable": True,
             "LSBackgroundOnly": False,
-            "CFBundleShortVersionString": "0.2.0",
+            "CFBundleShortVersionString": "0.3.0",
         },
     )

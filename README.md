@@ -18,7 +18,8 @@
 **설치 없이** 포터블 앱을 받아 바로 씁니다 — Python·ffmpeg·torch·RoFormer 모델이 모두 들어 있습니다.
 
 1. [Releases](../../releases)에서 내 OS에 맞는 파일을 받습니다.
-   `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-x86_64` · `windows-x86_64`
+   `macos-arm64`(애플 실리콘) · `macos-x86_64`(인텔 맥) · `linux-cpu-only` · `windows-cpu-only`
+   — **NVIDIA GPU가 있으면** `linux-cuda` / `windows-cuda`(CUDA 가속, 용량 때문에 여러 조각으로 나뉘어 올라옵니다 → [CLI STEP 2](docs/CLI.md#step-2-받아서-준비하기-포터블-앱)).
 2. 압축을 풀면 — **macOS는 `BandPrepare.app`**(더블클릭으로 바로 실행), **Linux·Windows는
    `bandprepare/` 폴더**(안에 실행 파일 2개)가 나옵니다. macOS 앱 안에도 CLI가 함께 들어 있습니다.
 3. 🖱 **마우스로**: macOS는 `BandPrepare.app`, Linux·Windows는 폴더 안 `bandprepare` 를

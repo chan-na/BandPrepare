@@ -2,18 +2,26 @@ name: build
 
 # Per-platform PyInstaller bundles (see ARCHITECTURE.md §12). torch is native and
 # has no macOS universal2 wheel, so a single universal binary is impossible — we
-# build one bundle per OS/arch (D1/D7).
+# build one bundle per OS/arch (D1/D7). Six bundles total:
+#   macos-arm64 · macos-x86_64 · linux-cpu-only · linux-cuda ·
+#   windows-cpu-only · windows-cuda
 #
-# Hosted runners build linux-x86_64 / macos-arm64 / windows-x86_64 (the `build`
-# matrix). GitHub-hosted Intel mac (macos-13) runners are unreliable, so the
-# x86_64 mac bundle is built on a SELF-HOSTED Intel mac in the separate
-# `build-macos-intel` job. That job is gated to tags + manual dispatch ONLY so
-# untrusted fork-PR code can never execute on the self-hosted machine.
+# Hosted runners build macos-arm64 / linux-cpu-only / windows-cpu-only on every
+# push/PR (the `build` matrix — CPU-only torch, ~500 MB each). GitHub-hosted Intel
+# mac (macos-13) runners are unreliable, so the x86_64 mac bundle is built on a
+# SELF-HOSTED Intel mac in the separate `build-macos-intel` job. The CUDA bundles
+# (linux-cuda / windows-cuda — cu121 torch) build in the separate `build-cuda`
+# job. Both the Intel-mac and CUDA jobs are gated to tags + manual dispatch ONLY:
+# the Intel-mac job because untrusted fork-PR code must never run on the
+# self-hosted machine, the CUDA job because the ~2.5 GB CUDA wheel + build output
+# pressures the hosted runner disk and shouldn't run on every PR (D9).
 #
 # On a v* tag every job packages its bundle and attaches it to a draft GitHub
 # Release. macOS ships a windowed BandPrepare.app (PyInstaller ad-hoc signs it
 # for free, so Finder launches it straight to a window — no Terminal); Linux and
-# Windows ship the onedir folder. Notarization still needs paid certs — see below.
+# Windows ship the onedir folder. The CUDA bundles exceed GitHub's 2 GiB
+# per-asset limit, so their archive is byte-split into <2 GiB `.001/.002` parts
+# (D9). Notarization still needs paid certs — see below.
 
 on:
   push:
@@ -34,10 +42,10 @@ jobs:
         include:
           - os: macos-14      # Apple Silicon arm64
             label: macos-arm64
-          - os: ubuntu-latest # Linux x86_64
-            label: linux-x86_64
-          - os: windows-latest # Windows x86_64
-            label: windows-x86_64
+          - os: ubuntu-latest # Linux x86_64 (CPU-only torch)
+            label: linux-cpu-only
+          - os: windows-latest # Windows x86_64 (CPU-only torch)
+            label: windows-cpu-only
 
     steps:
       - uses: actions/checkout@v6
@@ -165,6 +173,148 @@ jobs:
           files: |
             bandprepare-${{ matrix.label }}-*.tar.gz
             bandprepare-${{ matrix.label }}-*.zip
+
+  # CUDA bundles (linux-cuda / windows-cuda): same one-folder build as the CPU
+  # matrix above, but torch comes from the cu121 wheel so the bundle runs on
+  # NVIDIA GPUs (device.py `auto` picks cuda; falls back to CPU when no GPU — the
+  # CUDA bundle is a superset). Gated to tags + manual dispatch ONLY: the ~2.5 GB
+  # CUDA wheel + ~3.5 GB build output pressures the hosted-runner disk, so this
+  # must not run on every PR (the CPU `build` matrix already covers PR breakage).
+  # The CUDA archive exceeds GitHub's 2 GiB per-asset limit, so it is byte-split
+  # into <2 GiB `.001/.002` parts (users rejoin with `cat` / `copy /b`). See D9.
+  build-cuda:
+    name: ${{ matrix.label }}
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: write   # attach split assets to the GitHub Release (tag pushes)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest  # Linux x86_64 + CUDA
+            label: linux-cuda
+          - os: windows-latest # Windows x86_64 + CUDA
+            label: windows-cuda
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # CUDA torch (~2.5 GB) + the onedir build (~3.5 GB) can exhaust the hosted
+      # runner's disk. Reclaim space the build never needs before installing.
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /opt/hostedtoolcache/CodeQL /usr/local/.ghcup || true
+          sudo docker image prune --all --force || true
+          df -h
+
+      # PySide6 (even the offscreen platform) needs a few system libs on Linux.
+      - name: Install Qt runtime libs (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+
+      # cu121 = CUDA 12.1 (broadly compatible with current NVIDIA drivers; matches
+      # the source-install path documented in docs/DEVELOPMENT.md). Installed first
+      # so the editable install below leaves torch untouched. --no-cache-dir keeps
+      # the ~2.5 GB wheel from being kept twice (download cache + install).
+      - name: Install CUDA torch (cu121)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir "torch>=2.1.0,<2.3.0" "torchaudio>=2.1.0,<2.3.0" --index-url https://download.pytorch.org/whl/cu121
+
+      - name: Verify torch is a CUDA build
+        run: python -c "import torch; assert torch.version.cuda, 'torch is not a CUDA build'; print('CUDA', torch.version.cuda)"
+
+      - name: Install package + extras
+        run: |
+          python -m pip install --upgrade pip
+          # torch is already satisfied by the cu121 install above, so this won't
+          # pull a CPU wheel over it. roformer extra bundles BS/Mel-Band RoFormer.
+          pip install -e ".[gui,build,dev,roformer]"
+
+      - name: Run tests (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+
+      - name: Build bundle
+        run: pyinstaller --noconfirm bandprepare.spec
+
+      # Frozen smoke test. The hosted runner has no GPU, so this exercises the
+      # import / vendored-config / bundled-ffmpeg paths on CPU — it verifies the
+      # CUDA-torch bundle is wired up, not that CUDA itself runs (that needs real
+      # NVIDIA hardware; see docs).
+      - name: Frozen self-test (Linux)
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          BANDPREPARE_GUI_SELFTEST: "1"
+        run: ./dist/bandprepare/bandprepare
+
+      - name: Frozen self-test (Windows)
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          BANDPREPARE_GUI_SELFTEST: "1"
+        run: .\dist\bandprepare\bandprepare.exe
+
+      - name: CLI binary smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: ./dist/bandprepare/bandprepare-cli --version
+
+      - name: CLI binary smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: .\dist\bandprepare\bandprepare-cli.exe --version
+
+      - name: Upload bundle artifact (onedir)
+        uses: actions/upload-artifact@v7
+        with:
+          name: bandprepare-${{ matrix.label }}
+          path: dist/bandprepare
+          if-no-files-found: error
+
+      # --- Release assets (v* tag pushes only) --------------------------------
+      # The CUDA archive is larger than GitHub's 2 GiB per-asset limit, so split
+      # the single archive into raw <2 GiB byte chunks. Each chunk uploads as its
+      # own asset; the user concatenates them back (cat / copy /b) and extracts the
+      # reconstituted archive normally. 1900 MiB chunks stay safely under 2 GiB.
+      - name: Package bundle (Linux — tar.gz, split)
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          tar -C dist -czf full.tar.gz bandprepare
+          split -b 1900M --numeric-suffixes=1 -a 3 full.tar.gz \
+            "bandprepare-${{ matrix.label }}-${{ github.ref_name }}.tar.gz."
+          rm full.tar.gz
+          ls -lh bandprepare-${{ matrix.label }}-*
+
+      - name: Package bundle (Windows — zip, split)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        # 7-Zip (pre-installed on windows runners) compresses and byte-splits in
+        # one pass into `...zip.001`, `...zip.002` (raw split volumes — rejoin with
+        # `copy /b` then unzip). -v1900m matches the Linux 1900 MiB chunking.
+        run: |
+          7z a "bandprepare-${{ matrix.label }}-${{ github.ref_name }}.zip" .\dist\bandprepare -v1900m
+          dir bandprepare-${{ matrix.label }}-*
+
+      - name: Attach split bundle to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          # Draft so the release stays hidden until the (unsigned) bundles are
+          # reviewed and verified, then published manually.
+          draft: true
+          files: |
+            bandprepare-${{ matrix.label }}-*.tar.gz.*
+            bandprepare-${{ matrix.label }}-*.zip.*
 
   # Intel mac (x86_64): GitHub-hosted macos-13 runners are unreliable, so build
   # on a SELF-HOSTED Intel Mac (labels: self-hosted, macOS, X64). Gated to tags +
