@@ -43,7 +43,7 @@ pip install -e .
 
 ```bash
 bandprepare --version
-# bandprepare 0.1.0
+# bandprepare 0.3.0
 ```
 
 > 📌 새 터미널을 열 때마다 `source .venv/bin/activate` 를 먼저 실행해야 명령을 쓸 수
