@@ -43,6 +43,7 @@ class ModelInfo:
     load: "Loader"                   # (info, device, **opts) -> Separator
     channels: int = 2
     license_note: str = ""           # e.g. "CC BY-NC 4.0 (비상업용 / non-commercial)"
+    description: str = ""            # one-line bilingual help, shown as a GUI tooltip
 
 
 @runtime_checkable

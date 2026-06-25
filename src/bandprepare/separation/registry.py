@@ -93,6 +93,11 @@ STEM_MODELS: dict[str, ModelInfo] = {
         samplerate=44100,
         load=_demucs_loader("htdemucs_6s"),
         license_note="MIT",
+        description=(
+            "6스템(보컬·드럼·베이스·기타·피아노·나머지). 기타·피아노까지 뽑지만 "
+            "그 둘의 정확도는 낮은 편 / 6 stems incl. guitar & piano — but those "
+            "two are less accurate"
+        ),
     ),
     "htdemucs_ft": ModelInfo(
         id="htdemucs_ft",
@@ -102,6 +107,12 @@ STEM_MODELS: dict[str, ModelInfo] = {
         samplerate=44100,
         load=_demucs_loader("htdemucs_ft"),
         license_note="MIT",
+        description=(
+            "기본값·추천. 보컬·드럼·베이스·나머지 4스템. 미세조정판이라 품질이 "
+            "균형 잡혀 있고 안정적(기본 모델보다 약간 느림) / Default & recommended "
+            "— 4 stems (vocals/drums/bass/other), fine-tuned, balanced and "
+            "reliable (a bit slower)"
+        ),
     ),
     "bs_roformer": ModelInfo(
         id="bs_roformer",
@@ -116,6 +127,11 @@ STEM_MODELS: dict[str, ModelInfo] = {
             ckpt_name="model_bs_roformer_ep_17_sdr_9.6568.ckpt",
         ),
         license_note="MIT (code) · 가중치 ZFTurbo MIT / weights MIT",
+        description=(
+            "최신 트랜스포머 모델. 4스템이며 분리 품질이 더 높지만 더 무겁고 느림. "
+            "가중치를 처음 1회 자동 다운로드 / High-quality transformer, 4 stems "
+            "— better quality but heavier/slower; weights downloaded once"
+        ),
     ),
     "mel_band_roformer": ModelInfo(
         id="mel_band_roformer",
@@ -130,6 +146,12 @@ STEM_MODELS: dict[str, ModelInfo] = {
             ckpt_name="mel_band_roformer_kj.ckpt",
         ),
         license_note="MIT (code) · KimberleyJensen 보컬 2스템 / 2-stem vocal model",
+        description=(
+            "보컬 추출 특화. 보컬/반주 2스템만 만들며 보컬 품질이 매우 높음"
+            "(노래방·보컬 따기에 적합). 가중치 1회 다운로드 / Vocal-focused — "
+            "vocals + instrumental only, very high vocal quality (great for "
+            "karaoke); weights downloaded once"
+        ),
     ),
 }
 
@@ -142,6 +164,10 @@ DRUM_MODELS: dict[str, ModelInfo] = {
         samplerate=LARSNET_SR,
         load=_larsnet_loader(),
         license_note="CC BY-NC 4.0 (비상업용 / non-commercial)",
+        description=(
+            "드럼 5조각(킥·스네어·하이햇·심벌·톰). 비상업적 용도만 허용(CC BY-NC) / "
+            "5 pieces; non-commercial use only (CC BY-NC)"
+        ),
     ),
     "drumsep": ModelInfo(
         id="drumsep",
@@ -151,6 +177,10 @@ DRUM_MODELS: dict[str, ModelInfo] = {
         samplerate=DRUMSEP_SR,
         load=_drumsep_loader(),
         license_note="MIT (code) · 모델은 저자 논문 기반 / research model",
+        description=(
+            "드럼 4조각(킥·스네어·톰·심벌). Hybrid Demucs 기반 / 4 pieces "
+            "(kick/snare/toms/cymbals), Hybrid Demucs based"
+        ),
     ),
     "mdx23c": ModelInfo(
         id="mdx23c",
@@ -160,6 +190,10 @@ DRUM_MODELS: dict[str, ModelInfo] = {
         samplerate=MDX23C_SR,
         load=_mdx23c_loader(),
         license_note="MIT (code) · 체크포인트 aufr33 & jarredou / model weights by aufr33 & jarredou",
+        description=(
+            "기본값. 드럼을 6조각(킥·스네어·톰·하이햇·라이드·크래시)으로 가장 "
+            "세밀하게 분리 / Default — most detailed, 6 pieces incl. ride & crash"
+        ),
     ),
 }
 

@@ -17,6 +17,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 
 from .. import pipeline, youtube
+from ..cli import portable_base
 from ..errors import BandPrepareError
 
 # Fraction of the overall progress bar reserved for the URL download; the
@@ -91,7 +92,8 @@ class Worker(QObject):
         self.progress.emit("download", 0.0, "URL 음원 다운로드 / fetching audio")
         res = youtube.fetch(
             self._opts.source_url,
-            dest_base=Path.home(),
+            # Windowed GUI has no meaningful cwd → default to the home folder.
+            dest_base=portable_base(Path.home()),
             explicit_output=self._opts.output_dir,
             progress_cb=dl_cb,
             verbose=self._opts.verbose,

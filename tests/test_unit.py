@@ -754,6 +754,41 @@ def test_mainwindow_collect_options_requires_input():
     assert win._collect_options() is None
 
 
+# --- tooltips --------------------------------------------------------------
+# Tooltips must be rich text ("<div>…") so Qt word-wraps them instead of letting
+# long bilingual strings run off-screen and clip.
+
+
+def test_mainwindow_model_combos_have_wrapping_item_tooltips():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from PySide6.QtCore import Qt
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    for combo in (win._stem_combo, win._drum_combo):
+        assert combo.count() > 0
+        for i in range(combo.count()):
+            tip = combo.itemData(i, Qt.ItemDataRole.ToolTipRole)
+            assert tip and tip.startswith("<div>")
+    # The collapsed combo mirrors the selected model's tooltip.
+    assert win._stem_combo.toolTip().startswith("<div>")
+    # Switching model updates the mirrored tooltip to that model's description.
+    win._stem_combo.setCurrentIndex(win._stem_combo.findData("mel_band_roformer"))
+    assert "보컬" in win._stem_combo.toolTip()
+
+
+def test_mainwindow_minus_checkboxes_have_wrapping_tooltip():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    assert win._minus_checks
+    for cb in win._minus_checks.values():
+        assert cb.toolTip().startswith("<div>")
+
+
 # --- URL / YouTube input ---------------------------------------------------
 
 
@@ -763,12 +798,13 @@ def test_mainwindow_url_collect_sets_source_url_and_no_paths():
     from bandprepare.gui.app import MainWindow
 
     win = MainWindow()
+    win._url_radio.setChecked(True)
     win._url_edit.setText("https://youtu.be/abc")
     opts = win._collect_options()
     assert opts is not None
     assert opts.source_url == "https://youtu.be/abc"
     assert opts.input_path is None
-    # Blank output → worker names it after the title (under the home folder).
+    # Blank output → worker names it after the title (under the portable base).
     assert opts.output_dir is None
 
 
@@ -778,6 +814,7 @@ def test_mainwindow_url_with_explicit_output_kept():
     from bandprepare.gui.app import MainWindow
 
     win = MainWindow()
+    win._url_radio.setChecked(True)
     win._url_edit.setText("https://youtu.be/abc")
     win._output_edit.setText("/out/here")
     opts = win._collect_options()
@@ -792,16 +829,19 @@ def test_mainwindow_url_and_file_are_mutually_exclusive():
     from bandprepare.gui.app import MainWindow
 
     win = MainWindow()
-    # Choosing a file pre-fills input + output; then typing a URL clears both so
-    # the URL is used unambiguously.
+    # Choosing a file selects file mode and pre-fills input + output.
     win._set_input("/music/song.mp3")
+    assert win._file_radio.isChecked()
     assert win._input_edit.text() == "/music/song.mp3"
-    win._on_url_edited("https://youtu.be/x")
+    # Switching to URL mode drops the file and its file-derived output folder so
+    # the URL is used unambiguously (output defaults to the title-based folder).
+    win._url_radio.setChecked(True)
     assert win._input_edit.text() == ""
     assert win._output_edit.text() == ""
-    # Conversely, picking a file clears a previously typed URL.
+    # Conversely, choosing a file switches back to file mode and clears the URL.
     win._url_edit.setText("https://youtu.be/x")
     win._set_input("/music/other.mp3")
+    assert win._file_radio.isChecked()
     assert win._url_edit.text() == ""
 
 
@@ -816,6 +856,36 @@ def test_worker_scale_pipeline_fraction():
     assert _scale_pipeline_fraction(0.0, fetched=True) == _DOWNLOAD_BAR_SHARE
     assert _scale_pipeline_fraction(1.0, fetched=True) == 1.0
     assert _scale_pipeline_fraction(None, fetched=True) is None
+
+
+def test_portable_base_source_run_uses_fallback(monkeypatch):
+    from bandprepare import cli
+
+    # Not frozen → the entry point's fallback (cwd for CLI, home for GUI) is used.
+    monkeypatch.delattr(cli.sys, "frozen", raising=False)
+    assert cli.portable_base(Path("/work/dir")) == Path("/work/dir")
+
+
+def test_portable_base_frozen_onedir_is_exe_dir(monkeypatch):
+    from bandprepare import cli
+
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "platform", "win32")
+    monkeypatch.setattr(cli.sys, "executable", "/opt/BandPrepare/bandprepare.exe")
+    assert cli.portable_base(Path.cwd()) == Path("/opt/BandPrepare")
+
+
+def test_portable_base_frozen_macos_app_is_bundle_parent(monkeypatch):
+    from bandprepare import cli
+
+    monkeypatch.setattr(cli.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli.sys, "platform", "darwin")
+    # …/<dir>/BandPrepare.app/Contents/MacOS/bandprepare → output next to the .app.
+    monkeypatch.setattr(
+        cli.sys, "executable",
+        "/Users/me/Apps/BandPrepare.app/Contents/MacOS/bandprepare",
+    )
+    assert cli.portable_base(Path.cwd()) == Path("/Users/me/Apps")
 
 
 # --- frozen-bundle SSL CA wiring -------------------------------------------

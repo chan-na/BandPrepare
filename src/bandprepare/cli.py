@@ -113,6 +113,24 @@ def default_output_dir(input_path: str) -> Path:
     return src.parent / "BandPrepareOutput" / src.stem
 
 
+def portable_base(fallback: Path) -> Path:
+    """Base dir for the default URL output folder (``<base>/BandPrepareOutput``).
+
+    Frozen onedir build (Windows/Linux): the folder holding the executable — the
+    portable folder the user unzipped. Frozen ``.app`` (macOS): the folder that
+    *contains* BandPrepare.app, so output lands next to the app in Finder rather
+    than buried inside ``Contents/MacOS``. Running from source there is no bundled
+    executable, so ``fallback`` is used (cwd for the CLI, home for the windowed GUI).
+    """
+    if not getattr(sys, "frozen", False):
+        return fallback
+    exe_dir = Path(sys.executable).resolve().parent
+    # …/BandPrepare.app/Contents/MacOS/<exe> → step out to the .app's parent.
+    if sys.platform == "darwin" and exe_dir.parent.name == "Contents":
+        return exe_dir.parent.parent.parent
+    return exe_dir
+
+
 def main(argv: list[str] | None = None) -> int:
     # Frozen bundles ship their own OpenSSL with no usable CA path; point it at
     # the bundled certifi store so weight downloads don't fail TLS verification.
@@ -179,11 +197,11 @@ def main(argv: list[str] | None = None) -> int:
         if youtube.is_url(args.input):
             # URL input (e.g. YouTube): download the audio first, then run the
             # normal pipeline over the saved file. The per-song output folder is
-            # named after the video title (under ./BandPrepareOutput) unless -o
-            # was given.
+            # named after the video title under <portable base>/BandPrepareOutput
+            # (next to the frozen executable, else cwd) unless -o was given.
             explicit = Path(args.output) if args.output else None
             res = youtube.fetch(
-                args.input, dest_base=Path.cwd(),
+                args.input, dest_base=portable_base(Path.cwd()),
                 explicit_output=explicit, verbose=args.verbose,
             )
             input_path = res.audio_path
