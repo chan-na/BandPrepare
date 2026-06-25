@@ -27,6 +27,10 @@ dependencies = [
     # Static ffmpeg bundled in the wheel (no system install / runtime download).
     # ffmpeg only (no ffprobe); the decode path in audio.py accounts for that.
     "imageio-ffmpeg>=0.5",
+    # YouTube / URL audio input (bandprepare/youtube.py). Pure-Python, so it adds
+    # no native build burden. Note: a bundled yt-dlp can go stale as sites change
+    # — pip users should `pip install -U yt-dlp`; bundle users update via release.
+    "yt-dlp>=2024.0",
 ]
 
 [project.optional-dependencies]

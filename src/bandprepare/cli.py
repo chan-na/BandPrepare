@@ -15,6 +15,7 @@ from .errors import BandPrepareError, EXIT_INTERRUPTED, EXIT_USAGE
 from .logging_utils import get_logger, setup_logging
 from .pipeline import Options, run
 from .separation import registry
+from . import youtube
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "예시 / examples:\n"
             "  bandprepare song.mp3\n"
+            "  bandprepare \"https://youtu.be/VIDEO_ID\"   # 유튜브 링크 / a YouTube link\n"
             "  bandprepare song.wav -o out/ --format flac\n"
             "  bandprepare song.mp3 --stems vocals,drums,bass\n"
             "  bandprepare song.mp3 --minus bass        # 베이스 뺀 합본 / play-along\n"
@@ -40,7 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("input", type=str, nargs="?", default=None,
-                        help="입력 음원 파일 / input audio file (mp3, wav, flac, m4a, ...)")
+                        help="입력 음원 파일 또는 유튜브/URL 링크 / input audio file "
+                             "(mp3, wav, flac, m4a, ...) or a YouTube/URL link")
     parser.add_argument("-o", "--output", type=str, default=None,
                         help="출력 디렉터리 / output directory "
                              "(default: <input dir>/BandPrepareOutput/<name>/)")
@@ -169,28 +172,45 @@ def main(argv: list[str] | None = None) -> int:
             args.drum_model, args.drum_model,
         )
 
-    output_dir = Path(args.output) if args.output else default_output_dir(args.input)
-
-    opts = Options(
-        input_path=Path(args.input),
-        output_dir=output_dir,
-        stems=stems,
-        fmt=args.fmt,
-        device_choice=args.device,
-        stem_model=args.stem_model,
-        drum_model=args.drum_model,
-        drum_split=args.drum_split,
-        keep_drums_stem=args.keep_drums_stem,
-        wiener_exponent=wiener,
-        overwrite=args.overwrite,
-        verbose=args.verbose,
-        minus=minus,
-    )
-
-    # Make a usable ffmpeg resolvable (bundled or system) before decoding.
+    # Make a usable ffmpeg resolvable (bundled or system) before any fetch/decode.
     prepare_ffmpeg_path()
 
     try:
+        if youtube.is_url(args.input):
+            # URL input (e.g. YouTube): download the audio first, then run the
+            # normal pipeline over the saved file. The per-song output folder is
+            # named after the video title (under ./BandPrepareOutput) unless -o
+            # was given.
+            explicit = Path(args.output) if args.output else None
+            res = youtube.fetch(
+                args.input, dest_base=Path.cwd(),
+                explicit_output=explicit, verbose=args.verbose,
+            )
+            input_path = res.audio_path
+            output_dir = res.output_dir
+            logger.info("URL 입력 / source : %s", args.input)
+            logger.info("받은 제목 / title  : %s", res.title)
+        else:
+            input_path = Path(args.input)
+            output_dir = (
+                Path(args.output) if args.output else default_output_dir(args.input)
+            )
+
+        opts = Options(
+            input_path=input_path,
+            output_dir=output_dir,
+            stems=stems,
+            fmt=args.fmt,
+            device_choice=args.device,
+            stem_model=args.stem_model,
+            drum_model=args.drum_model,
+            drum_split=args.drum_split,
+            keep_drums_stem=args.keep_drums_stem,
+            wiener_exponent=wiener,
+            overwrite=args.overwrite,
+            verbose=args.verbose,
+            minus=minus,
+        )
         return run(opts)
     except BandPrepareError as exc:
         logger.error("")

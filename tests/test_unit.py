@@ -754,6 +754,70 @@ def test_mainwindow_collect_options_requires_input():
     assert win._collect_options() is None
 
 
+# --- URL / YouTube input ---------------------------------------------------
+
+
+def test_mainwindow_url_collect_sets_source_url_and_no_paths():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    win._url_edit.setText("https://youtu.be/abc")
+    opts = win._collect_options()
+    assert opts is not None
+    assert opts.source_url == "https://youtu.be/abc"
+    assert opts.input_path is None
+    # Blank output → worker names it after the title (under the home folder).
+    assert opts.output_dir is None
+
+
+def test_mainwindow_url_with_explicit_output_kept():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    win._url_edit.setText("https://youtu.be/abc")
+    win._output_edit.setText("/out/here")
+    opts = win._collect_options()
+    assert opts is not None
+    assert opts.source_url == "https://youtu.be/abc"
+    assert opts.output_dir == Path("/out/here")
+
+
+def test_mainwindow_url_and_file_are_mutually_exclusive():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    # Choosing a file pre-fills input + output; then typing a URL clears both so
+    # the URL is used unambiguously.
+    win._set_input("/music/song.mp3")
+    assert win._input_edit.text() == "/music/song.mp3"
+    win._on_url_edited("https://youtu.be/x")
+    assert win._input_edit.text() == ""
+    assert win._output_edit.text() == ""
+    # Conversely, picking a file clears a previously typed URL.
+    win._url_edit.setText("https://youtu.be/x")
+    win._set_input("/music/other.mp3")
+    assert win._url_edit.text() == ""
+
+
+def test_worker_scale_pipeline_fraction():
+    pytest.importorskip("PySide6")
+    from bandprepare.gui.worker import _DOWNLOAD_BAR_SHARE, _scale_pipeline_fraction
+
+    # File input: pipeline owns the whole bar, unchanged.
+    assert _scale_pipeline_fraction(0.0, fetched=False) == 0.0
+    assert _scale_pipeline_fraction(1.0, fetched=False) == 1.0
+    # URL input: the download owns the first slice; pipeline fills the rest.
+    assert _scale_pipeline_fraction(0.0, fetched=True) == _DOWNLOAD_BAR_SHARE
+    assert _scale_pipeline_fraction(1.0, fetched=True) == 1.0
+    assert _scale_pipeline_fraction(None, fetched=True) is None
+
+
 # --- frozen-bundle SSL CA wiring -------------------------------------------
 # Regression for v0.1.0: a downloaded macOS bundle failed every weight download
 # with CERTIFICATE_VERIFY_FAILED because the frozen OpenSSL had no usable CA

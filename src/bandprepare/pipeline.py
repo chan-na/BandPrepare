@@ -55,8 +55,12 @@ def compute_minus(
 
 @dataclass
 class Options:
-    input_path: Path
-    output_dir: Path
+    # input_path/output_dir are Optional only transiently: when source_url is set
+    # (a URL input), the entry layer (CLI main / GUI worker) downloads first and
+    # fills both in before pipeline.run() is reached. By the time run() executes
+    # they are always concrete Paths.
+    input_path: Optional[Path]
+    output_dir: Optional[Path]
     stems: list[str]
     fmt: str = "wav"
     device_choice: str = "auto"
@@ -69,6 +73,9 @@ class Options:
     verbose: bool = False
     shifts: int = 1
     minus: list[str] = field(default_factory=list)
+    # Set when the input is a URL (YouTube etc.). The GUI worker reads this to
+    # fetch audio before running; the CLI fetches up-front and leaves it None.
+    source_url: Optional[str] = None
     # Optional UI progress hook. The CLI leaves this None (keeps its tqdm output,
     # so there is no behavioural change); the GUI passes a callback to drive its
     # progress bar + log panel. See ProgressCallback above for the contract.

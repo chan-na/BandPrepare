@@ -30,7 +30,7 @@ Design notes (see ARCHITECTURE.md §12):
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 project_root = Path(SPECPATH)
 src_root = project_root / "src"
@@ -69,6 +69,12 @@ try:
 except ImportError:
     pass  # CPU-only build — no CUDA runtime to bundle.
 
+# yt-dlp (URL/YouTube audio input) dynamically imports its many site extractors,
+# so collect every submodule explicitly or PyInstaller misses them at runtime.
+# collect_data_files picks up its bundled data; it has no native binaries.
+hiddenimports += collect_submodules("yt_dlp")
+datas += collect_data_files("yt_dlp")
+
 # Our backends are imported lazily inside registry loader closures, so name them
 # explicitly. RoFormer modules are deliberately omitted (see header / D6) and are
 # listed under ``excludes`` below.
@@ -76,6 +82,7 @@ hiddenimports += [
     "bandprepare.pipeline",
     "bandprepare.cli",
     "bandprepare.audio",
+    "bandprepare.youtube",
     "bandprepare.device",
     "bandprepare.errors",
     "bandprepare.logging_utils",
