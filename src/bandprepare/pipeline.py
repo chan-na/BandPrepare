@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
-from . import audio, click
+from . import audio
 from .device import resolve_device
 from .logging_utils import get_logger, stage, step
 from .separation import registry
@@ -31,20 +31,9 @@ MIXES_SUBDIR = "mixes"
 ProgressCallback = Callable[[str, Optional[float], str], None]
 
 
-def _fmt_bpm(bpm: float) -> str:
-    """BPM as a compact filename token: ``120.0 -> '120'``, ``120.5 -> '120.5'``."""
-    return f"{bpm:.3f}".rstrip("0").rstrip(".")
-
-
-def _minus_filename(names: list[str], ext: str, count_in_bpm: float | None = None) -> str:
-    """File name for a mix-minus output, e.g. ``minus-vocals-bass.wav``.
-
-    A count-in tags the name (``minus-bass-count120.wav``) so a play-along with a
-    click is a distinct file from one without — re-running with/without the
-    count-in never silently reuses (or overwrites) the other via the skip logic.
-    """
-    suffix = f"-count{_fmt_bpm(count_in_bpm)}" if count_in_bpm else ""
-    return f"minus-{'-'.join(names)}{suffix}.{ext}"
+def _minus_filename(names: list[str], ext: str) -> str:
+    """File name for a mix-minus output, e.g. ``minus-vocals-bass.wav``."""
+    return f"minus-{'-'.join(names)}.{ext}"
 
 
 def compute_minus(
@@ -84,14 +73,6 @@ class Options:
     verbose: bool = False
     shifts: int = 1
     minus: list[str] = field(default_factory=list)
-    # Count-in click track (band practice): when count_in_bpm is set, the
-    # mix-minus output is prefixed with ``count_in_bars × count_in_beats_per_bar``
-    # metronome clicks at that tempo so the band can come in on the beat. Tempo is
-    # user-supplied (no auto-detection). Only affects the mix-minus output, so it
-    # is a no-op unless ``minus`` is also set.
-    count_in_bpm: float | None = None
-    count_in_bars: int = 1
-    count_in_beats_per_bar: int = 4
     # Set when the input is a URL (YouTube etc.). The GUI worker reads this to
     # fetch audio before running; the CLI fetches up-front and leaves it None.
     source_url: Optional[str] = None
@@ -129,8 +110,7 @@ def planned_outputs(opts: Options) -> list[Path]:
             files.append(instr / f"drums.{ext}")
 
     if opts.minus:
-        name = _minus_filename(opts.minus, ext, opts.count_in_bpm)
-        files.append(opts.output_dir / MIXES_SUBDIR / name)
+        files.append(opts.output_dir / MIXES_SUBDIR / _minus_filename(opts.minus, ext))
     return files
 
 
@@ -250,22 +230,7 @@ def run(opts: Options) -> int:
             )
         emit("minus", stems_done_frac, "마이너스원 생성 / building mix-minus")
         mixdown = compute_minus(wav, sources, opts.minus)
-        if opts.count_in_bpm:
-            mixdown = click.prepend_count_in(
-                mixdown, opts.count_in_bpm,
-                samplerate=stem_info.samplerate,
-                bars=opts.count_in_bars, beats_per_bar=opts.count_in_beats_per_bar,
-            )
-            step(
-                logger,
-                f"카운트인 추가 / count-in: {_fmt_bpm(opts.count_in_bpm)} BPM, "
-                f"{opts.count_in_bars}마디 × {opts.count_in_beats_per_bar}박 "
-                f"/ {opts.count_in_bars} bar(s) × {opts.count_in_beats_per_bar} beats",
-            )
-        out_path = (
-            opts.output_dir / MIXES_SUBDIR
-            / _minus_filename(opts.minus, opts.fmt, opts.count_in_bpm)
-        )
+        out_path = opts.output_dir / MIXES_SUBDIR / _minus_filename(opts.minus, opts.fmt)
         audio.save_waveform(mixdown, out_path, stem_info.samplerate, opts.fmt)
         written.append(out_path)
         step(logger, f"마이너스원 저장 / saved mix-minus: {out_path}")

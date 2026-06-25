@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -70,9 +69,6 @@ def build_options(
     overwrite: bool,
     verbose: bool,
     source_url: str | None = None,
-    count_in_bpm: float | None = None,
-    count_in_bars: int = 1,
-    count_in_beats_per_bar: int = 4,
 ) -> Options:
     """Build an :class:`Options` from plain UI state (no widgets involved).
 
@@ -95,9 +91,6 @@ def build_options(
         verbose=verbose,
         minus=list(minus),
         source_url=source_url,
-        count_in_bpm=count_in_bpm,
-        count_in_bars=count_in_bars,
-        count_in_beats_per_bar=count_in_beats_per_bar,
     )
 
 
@@ -214,41 +207,6 @@ class MainWindow(QMainWindow):
             "Creates a new mix with the selected stems removed."
         ))
         root.addWidget(self._minus_group)
-
-        # --- 카운트인 / Count-in ----------------------------------------------
-        # Prepends a metronome count-in to the mix-minus so the band can come in
-        # on the beat. Only meaningful with a mix-minus, so it follows the toggle
-        # of the group above (disabled while mix-minus is off).
-        self._count_group = QGroupBox(
-            "카운트인 클릭 (마이너스원 앞) / Count-in click (before mix-minus)"
-        )
-        self._count_group.setCheckable(True)
-        self._count_group.setChecked(False)
-        count_box = QVBoxLayout(self._count_group)
-        count_form = QFormLayout()
-        self._count_bpm_spin = QSpinBox()
-        self._count_bpm_spin.setRange(40, 300)
-        self._count_bpm_spin.setValue(120)
-        self._count_bpm_spin.setSuffix(" BPM")
-        count_form.addRow("템포 / Tempo", self._count_bpm_spin)
-        self._count_bars_spin = QSpinBox()
-        self._count_bars_spin.setRange(1, 8)
-        self._count_bars_spin.setValue(1)
-        count_form.addRow("마디 수 / Bars", self._count_bars_spin)
-        self._count_beats_spin = QSpinBox()
-        self._count_beats_spin.setRange(1, 12)
-        self._count_beats_spin.setValue(4)
-        count_form.addRow("박자/마디 / Beats per bar", self._count_beats_spin)
-        count_box.addLayout(count_form)
-        count_box.addWidget(_desc_label(
-            "마이너스원 앞에 해당 템포의 클릭(삐 삐 삐 삐)을 넣어 박자를 맞춰 시작할 수 있게 합니다. "
-            "곡의 BPM 을 직접 입력하세요. / Prepends metronome clicks at this tempo to the "
-            "mix-minus so the band can come in on the beat. Enter the song's BPM."
-        ))
-        root.addWidget(self._count_group)
-        # Count-in is a no-op without a mix-minus: mirror the mix-minus toggle.
-        self._minus_group.toggled.connect(self._count_group.setEnabled)
-        self._count_group.setEnabled(self._minus_group.isChecked())
 
         # --- 드럼 분리 / Drum split -------------------------------------------
         # Checkable group: drum model + keep-drums are only selectable while
@@ -454,15 +412,6 @@ class MainWindow(QMainWindow):
         if self._minus_group.isChecked():
             minus = [name for name, cb in self._minus_checks.items() if cb.isChecked()]
 
-        # Count-in only applies on top of a mix-minus (and while its toggle is on).
-        count_in_bpm: float | None = None
-        count_in_bars = 1
-        count_in_beats = 4
-        if minus and self._count_group.isChecked():
-            count_in_bpm = float(self._count_bpm_spin.value())
-            count_in_bars = self._count_bars_spin.value()
-            count_in_beats = self._count_beats_spin.value()
-
         output_text = self._output_edit.text().strip()
 
         # Input/output paths differ between a URL (downloaded by the worker) and a
@@ -492,9 +441,6 @@ class MainWindow(QMainWindow):
             keep_drums_stem=self._keep_drums_check.isChecked(),
             overwrite=self._overwrite_check.isChecked(),
             verbose=self._verbose_check.isChecked(),
-            count_in_bpm=count_in_bpm,
-            count_in_bars=count_in_bars,
-            count_in_beats_per_bar=count_in_beats,
         )
 
     def _on_run(self) -> None:

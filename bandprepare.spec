@@ -82,7 +82,6 @@ hiddenimports += [
     "bandprepare.pipeline",
     "bandprepare.cli",
     "bandprepare.audio",
-    "bandprepare.click",
     "bandprepare.youtube",
     "bandprepare.device",
     "bandprepare.errors",
