@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, QThread, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -112,6 +114,7 @@ class MainWindow(QMainWindow):
         self._populate_models()
         self._rebuild_stem_widgets()
         self._update_drum_controls_enabled()
+        self._on_input_mode_changed()  # set initial file/URL row visibility
 
     # ---- UI construction ----------------------------------------------------
 
@@ -122,7 +125,22 @@ class MainWindow(QMainWindow):
         # --- 입출력 파일 / Input & output files -------------------------------
         # "&&" → literal "&" (a single "&" marks a mnemonic in Qt titles).
         io_group = QGroupBox("입출력 파일 / Input && output files")
-        io_form = QFormLayout(io_group)
+        self._io_form = io_form = QFormLayout(io_group)
+
+        # Input source is file XOR URL: a pair of radios picks one mode and the
+        # other mode's row is hidden, so only the active input is ever filled.
+        self._file_radio = QRadioButton("파일 / File")
+        self._url_radio = QRadioButton("유튜브 링크 / YouTube link")
+        self._file_radio.setChecked(True)
+        self._input_mode = QButtonGroup(self)
+        self._input_mode.addButton(self._file_radio)
+        self._input_mode.addButton(self._url_radio)
+        self._file_radio.toggled.connect(self._on_input_mode_changed)
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(self._file_radio)
+        mode_row.addWidget(self._url_radio)
+        mode_row.addStretch(1)
+        io_form.addRow("입력 방식 / Input", mode_row)
 
         self._input_edit = QLineEdit()
         self._input_edit.setPlaceholderText(
@@ -132,32 +150,29 @@ class MainWindow(QMainWindow):
         self._input_edit.setReadOnly(True)
         choose_file = QPushButton("파일 선택 / Choose file…")
         choose_file.clicked.connect(self._choose_file)
-        in_row = QHBoxLayout()
+        self._file_row = in_row = QHBoxLayout()
         in_row.addWidget(self._input_edit, 1)
         in_row.addWidget(choose_file)
         io_form.addRow("입력 파일 / Input file", in_row)
 
-        # YouTube / URL input. When filled it takes precedence over the file
-        # above: the worker downloads the audio first, then runs the pipeline.
+        # YouTube / URL input. Shown only in URL mode; the worker downloads the
+        # audio first, then runs the normal pipeline over the saved file.
         self._url_edit = QLineEdit()
         self._url_edit.setPlaceholderText(
-            "유튜브 등 링크를 붙여넣기 (파일 대신) / "
-            "Paste a YouTube (or other) link instead of a file"
+            "유튜브 등 링크를 붙여넣기 / Paste a YouTube (or other) link"
         )
-        self._url_edit.textEdited.connect(self._on_url_edited)
         io_form.addRow("유튜브 링크 / YouTube link", self._url_edit)
-        io_form.addRow("", _desc_label(
+        self._url_hint = _desc_label(
             "링크를 입력하면 음원을 자동으로 받아 처리합니다. 출력 폴더를 비워 두면 "
-            "홈 폴더의 BandPrepareOutput/<제목> 에 저장됩니다. / "
+            "실행 파일 옆 BandPrepareOutput/<제목> 에 저장됩니다. / "
             "Audio is fetched automatically; an empty output folder → "
-            "BandPrepareOutput/<title> under your home folder."
-        ))
-
-        self._output_edit = QLineEdit()
-        self._output_edit.setPlaceholderText(
-            "비워 두면 입력 파일 옆 BandPrepareOutput/<곡이름> / "
-            "Empty → BandPrepareOutput/<name> next to the input file"
+            "BandPrepareOutput/<title> next to the executable."
         )
+        io_form.addRow("", self._url_hint)
+
+        # Placeholder is set per input mode in _on_input_mode_changed() since the
+        # empty-output default differs (next to the file vs. next to the exe).
+        self._output_edit = QLineEdit()
         choose_folder = QPushButton("폴더 선택 / Choose folder…")
         choose_folder.clicked.connect(self._choose_folder)
         out_row = QHBoxLayout()
@@ -351,17 +366,31 @@ class MainWindow(QMainWindow):
             self._output_edit.setText(path)
 
     def _set_input(self, path: str) -> None:
+        # A dropped/chosen file implies file mode; switch to it so the file is
+        # unambiguously the active input.
+        self._file_radio.setChecked(True)
         self._input_edit.setText(path)
-        # A file and a URL are mutually exclusive inputs; picking a file clears
-        # any URL so the file is unambiguously used.
-        self._url_edit.clear()
         # Pre-fill the output folder from the input filename.
         self._output_edit.setText(str(default_output_dir(path)))
 
-    def _on_url_edited(self, text: str) -> None:
-        # Typing a URL clears the chosen file (URL takes precedence) and the
-        # file-derived output folder, so it defaults to the title-based one.
-        if text.strip():
+    def _on_input_mode_changed(self, *_) -> None:
+        """Show only the active input's row and clear the inactive one."""
+        file_mode = self._file_radio.isChecked()
+        self._io_form.setRowVisible(self._file_row, file_mode)
+        self._io_form.setRowVisible(self._url_edit, not file_mode)
+        self._io_form.setRowVisible(self._url_hint, not file_mode)
+        self._output_edit.setPlaceholderText(
+            "비워 두면 입력 파일 옆 BandPrepareOutput/<곡이름> / "
+            "Empty → BandPrepareOutput/<name> next to the input file"
+            if file_mode else
+            "비워 두면 실행 파일 옆 BandPrepareOutput/<제목> / "
+            "Empty → BandPrepareOutput/<title> next to the executable"
+        )
+        if file_mode:
+            self._url_edit.clear()
+        else:
+            # Leaving file mode: drop the file and its file-derived output so the
+            # URL default (title-based folder) applies.
             self._input_edit.clear()
             self._output_edit.clear()
 
@@ -392,12 +421,18 @@ class MainWindow(QMainWindow):
     # ---- run ----------------------------------------------------------------
 
     def _collect_options(self) -> Options | None:
-        url_text = self._url_edit.text().strip()
-        input_text = self._input_edit.text().strip()
-        if not url_text and not input_text:
+        # Input is file XOR URL, chosen by the radio; only the active field is read.
+        url_mode = self._url_radio.isChecked()
+        url_text = self._url_edit.text().strip() if url_mode else ""
+        input_text = self._input_edit.text().strip() if not url_mode else ""
+        if url_mode and not url_text:
             self._append_log(
-                "입력 파일이나 유튜브/URL 링크를 먼저 입력하세요. / "
-                "Please choose an input file or paste a URL first."
+                "유튜브/URL 링크를 먼저 입력하세요. / Please paste a URL first."
+            )
+            return None
+        if not url_mode and not input_text:
+            self._append_log(
+                "입력 파일을 먼저 선택하세요. / Please choose an input file first."
             )
             return None
 
