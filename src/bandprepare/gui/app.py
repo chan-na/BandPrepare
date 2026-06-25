@@ -7,6 +7,7 @@ The window only gathers state and displays progress; all audio work happens in
 
 from __future__ import annotations
 
+import html
 import os
 import sys
 from pathlib import Path
@@ -54,6 +55,16 @@ def _desc_label(text: str) -> QLabel:
     label.setWordWrap(True)
     label.setStyleSheet("color: palette(mid); font-size: 11px;")
     return label
+
+
+def _tip(text: str) -> str:
+    """A word-wrapping tooltip string from a bilingual ``"KO / EN"`` source.
+
+    Qt does NOT wrap plain-text tooltips, so a long one runs off-screen and gets
+    clipped. Wrapping the text as rich text (any HTML tag) makes Qt word-wrap it;
+    we also split the Korean / English halves onto separate lines for legibility.
+    """
+    return "<div>" + html.escape(text).replace(" / ", "<br>") + "</div>"
 
 
 def build_options(
@@ -233,6 +244,9 @@ class MainWindow(QMainWindow):
         drum_box = QVBoxLayout(self._drum_group)
         drum_form = QFormLayout()
         self._drum_combo = QComboBox()
+        self._drum_combo.currentIndexChanged.connect(
+            lambda: self._refresh_combo_tip(self._drum_combo)
+        )
         drum_form.addRow("드럼 모델 / Drum model", self._drum_combo)
         drum_box.addLayout(drum_form)
         drum_box.addWidget(_desc_label(
@@ -282,17 +296,36 @@ class MainWindow(QMainWindow):
         self.resize(700, 860)
 
     def _populate_models(self) -> None:
-        for info in registry.STEM_MODELS.values():
+        # Each model's description rides along as the item's tooltip (shown on
+        # hover in the dropdown) and is mirrored onto the collapsed combo box.
+        for i, info in enumerate(registry.STEM_MODELS.values()):
             self._stem_combo.addItem(info.display, info.id)
+            if info.description:
+                self._stem_combo.setItemData(
+                    i, _tip(info.description), Qt.ItemDataRole.ToolTipRole
+                )
         idx = self._stem_combo.findData(registry.DEFAULT_STEM_MODEL)
         if idx >= 0:
             self._stem_combo.setCurrentIndex(idx)
 
-        for info in registry.DRUM_MODELS.values():
+        for i, info in enumerate(registry.DRUM_MODELS.values()):
             self._drum_combo.addItem(info.display, info.id)
+            if info.description:
+                self._drum_combo.setItemData(
+                    i, _tip(info.description), Qt.ItemDataRole.ToolTipRole
+                )
         idx = self._drum_combo.findData(registry.DEFAULT_DRUM_MODEL)
         if idx >= 0:
             self._drum_combo.setCurrentIndex(idx)
+
+        self._refresh_combo_tip(self._stem_combo)
+        self._refresh_combo_tip(self._drum_combo)
+
+    def _refresh_combo_tip(self, combo: QComboBox) -> None:
+        """Mirror the selected item's tooltip onto the collapsed combo box."""
+        combo.setToolTip(
+            combo.itemData(combo.currentIndex(), Qt.ItemDataRole.ToolTipRole) or ""
+        )
 
     # ---- dynamic stem / minus widgets --------------------------------------
 
@@ -323,6 +356,10 @@ class MainWindow(QMainWindow):
 
             minus = QCheckBox(name)
             minus.setChecked(False)  # remove nothing by default
+            minus.setToolTip(_tip(
+                "본인이 연주(또는 노래)할 파트를 체크하면 그 파트가 빠진 반주가 "
+                "생깁니다 / Check the part you'll play/sing to remove it from the mix"
+            ))
             self._minus_layout.addWidget(minus)
             self._minus_checks[name] = minus
 
@@ -332,6 +369,7 @@ class MainWindow(QMainWindow):
     def _on_stem_model_changed(self) -> None:
         self._rebuild_stem_widgets()
         self._update_drum_controls_enabled()
+        self._refresh_combo_tip(self._stem_combo)
 
     def _model_has_drums(self) -> bool:
         return "drums" in registry.resolve_stem(self._current_stem_id()).output_stems

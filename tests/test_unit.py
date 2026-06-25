@@ -754,6 +754,41 @@ def test_mainwindow_collect_options_requires_input():
     assert win._collect_options() is None
 
 
+# --- tooltips --------------------------------------------------------------
+# Tooltips must be rich text ("<div>…") so Qt word-wraps them instead of letting
+# long bilingual strings run off-screen and clip.
+
+
+def test_mainwindow_model_combos_have_wrapping_item_tooltips():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from PySide6.QtCore import Qt
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    for combo in (win._stem_combo, win._drum_combo):
+        assert combo.count() > 0
+        for i in range(combo.count()):
+            tip = combo.itemData(i, Qt.ItemDataRole.ToolTipRole)
+            assert tip and tip.startswith("<div>")
+    # The collapsed combo mirrors the selected model's tooltip.
+    assert win._stem_combo.toolTip().startswith("<div>")
+    # Switching model updates the mirrored tooltip to that model's description.
+    win._stem_combo.setCurrentIndex(win._stem_combo.findData("mel_band_roformer"))
+    assert "보컬" in win._stem_combo.toolTip()
+
+
+def test_mainwindow_minus_checkboxes_have_wrapping_tooltip():
+    pytest.importorskip("PySide6")
+    _qapp()
+    from bandprepare.gui.app import MainWindow
+
+    win = MainWindow()
+    assert win._minus_checks
+    for cb in win._minus_checks.values():
+        assert cb.toolTip().startswith("<div>")
+
+
 # --- URL / YouTube input ---------------------------------------------------
 
 
