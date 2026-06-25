@@ -34,6 +34,16 @@ BandPrepare는 음원 한 곡을 **2단계**로 분리하는 CLI입니다.
 인터페이스 뒤에 숨겨진 **어댑터**로 구현됩니다. 선택지·메타데이터는 단일
 **레지스트리**(`separation/registry.py`)가 관리합니다.
 
+**입력 소스 — 파일 또는 URL**: 입력은 로컬 음원 파일뿐 아니라 **유튜브/URL 링크**도
+될 수 있습니다(`youtube.py`). 다운로드는 의도적으로 **진입 계층**(CLI `main` / GUI
+worker)에서만 일어나고 `pipeline.run` 은 손대지 않습니다 — 네트워크 의존적이고 깨지기
+쉬운 신규 코드를 잘 테스트된 분리 경로에서 격리하기 위함입니다. `youtube.fetch` 는
+`bestaudio` 스트림을 **재인코딩 없이** 받아 결과 폴더에 `source.<ext>` 로 저장하고,
+그 파일을 평소처럼 파이프라인에 넘깁니다(유튜브 컨테이너 webm/opus/m4a 는 `audio.
+load_track` 의 번들-ffmpeg 디코드 경로가 그대로 처리). URL 여부는 `Options.source_url`
+로 표시하며, GUI worker 는 다운로드를 진행바의 앞 10% 구간에 매핑한 뒤 분리 진행률을
+이어 붙입니다.
+
 ---
 
 ## 2. 모듈 구성 / Module map
@@ -43,6 +53,7 @@ src/bandprepare/
 ├── cli.py                  # 인자 파싱, --list-models, 모델별 --stems 검증, 진입점
 ├── pipeline.py             # 2단계 오케스트레이션 (Options, run, planned_outputs, compute_minus)
 ├── audio.py                # 입출력 / ffmpeg 점검 (load_track, save_waveform)
+├── youtube.py              # 유튜브/URL 입력 → yt-dlp 로 음원 다운로드 (is_url, fetch)
 ├── device.py               # --device 해석 (auto/cpu/cuda/mps, Intel-Mac MPS 회피)
 ├── errors.py               # 사용자용 에러 타입 + 종료 코드
 ├── logging_utils.py        # stage/step 로깅 헬퍼
@@ -338,6 +349,7 @@ CLI와 같은 코어(`pipeline.run`)를 호출하므로 두 진입점이 한 번
 | D6 | RoFormer **동봉**(초기엔 제외 → 해소) | `import librosa`가 numba/llvmlite JIT 스택을 끌어와 동결이 까다로웠음 → Mel-Band의 유일한 librosa 사용(`filters.mel`)을 순수 numpy로 `vendor/roformer/_mel.py`에 벤더링(§6)해 그래프에서 제거. BS·Mel **양쪽 동봉** |
 | D7 | **플랫폼별 빌드 필수** | torch가 macOS universal2 휠 미제공, Intel-mac은 torch 2.2.2가 마지막 → mac x86_64 / arm64 / Linux / Win 각각 빌드. Linux·Win은 CPU·CUDA 두 변형(D9)이라 총 **6종** |
 | D8 | 한 번들에 **CLI + GUI 두 바이너리** | 같은 COLLECT의 라이브러리(torch 등)를 공유 → CLI 추가 비용은 자기 PYZ+부트스트랩뿐 |
+| D10 | 유튜브/URL 입력 = **yt-dlp 동봉** | 순수 Python이라 네이티브 빌드 부담 없음. 동적 import되는 사이트 extractor가 많아 spec에서 `collect_submodules("yt_dlp")`+`collect_data_files`로 명시 수집. **주의**: 사이트 변경에 맞춰 자주 갱신되는 도구라 동봉본은 노후화될 수 있음 — 라이브러리로 import되면 자체 `-U` 업데이트가 안 되므로, 막히면 **릴리스 갱신**으로 대응(pip 설치는 `pip install -U yt-dlp`). 다운로드는 진입 계층에서만 수행해 파이프라인과 격리(§1) |
 
 ### 빌드 & 릴리스
 

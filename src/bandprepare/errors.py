@@ -14,6 +14,7 @@ EXIT_INPUT = 3          # input file missing / unreadable / not audio
 EXIT_DEPENDENCY = 4     # a required external dependency (e.g. ffmpeg) is missing
 EXIT_MODEL = 5          # model weights could not be downloaded / loaded
 EXIT_SEPARATION = 6     # separation itself failed
+EXIT_DOWNLOAD = 7       # fetching audio from a URL (e.g. YouTube) failed
 EXIT_INTERRUPTED = 130  # Ctrl-C
 
 
@@ -47,6 +48,12 @@ class ModelError(BandPrepareError):
     """Model weights could not be downloaded or loaded."""
 
     exit_code = EXIT_MODEL
+
+
+class DownloadError(BandPrepareError):
+    """Audio could not be fetched from a URL (e.g. a YouTube link)."""
+
+    exit_code = EXIT_DOWNLOAD
 
 
 class SeparationError(BandPrepareError):

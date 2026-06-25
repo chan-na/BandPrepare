@@ -56,8 +56,8 @@ def _desc_label(text: str) -> QLabel:
 
 def build_options(
     *,
-    input_path: Path,
-    output_dir: Path,
+    input_path: Path | None,
+    output_dir: Path | None,
     stem_model: str,
     drum_model: str,
     stems: list[str],
@@ -68,15 +68,18 @@ def build_options(
     keep_drums_stem: bool,
     overwrite: bool,
     verbose: bool,
+    source_url: str | None = None,
 ) -> Options:
     """Build an :class:`Options` from plain UI state (no widgets involved).
 
     Kept pure so it can be unit-tested without a display. The window calls this
-    with values read from its widgets.
+    with values read from its widgets. For a URL input ``input_path`` (and,
+    optionally, ``output_dir``) is None — the worker fills them in after the
+    download.
     """
     return Options(
-        input_path=Path(input_path),
-        output_dir=Path(output_dir),
+        input_path=Path(input_path) if input_path is not None else None,
+        output_dir=Path(output_dir) if output_dir is not None else None,
         stems=list(stems),
         fmt=fmt,
         device_choice=device_choice,
@@ -87,6 +90,7 @@ def build_options(
         overwrite=overwrite,
         verbose=verbose,
         minus=list(minus),
+        source_url=source_url,
     )
 
 
@@ -132,6 +136,22 @@ class MainWindow(QMainWindow):
         in_row.addWidget(self._input_edit, 1)
         in_row.addWidget(choose_file)
         io_form.addRow("입력 파일 / Input file", in_row)
+
+        # YouTube / URL input. When filled it takes precedence over the file
+        # above: the worker downloads the audio first, then runs the pipeline.
+        self._url_edit = QLineEdit()
+        self._url_edit.setPlaceholderText(
+            "유튜브 등 링크를 붙여넣기 (파일 대신) / "
+            "Paste a YouTube (or other) link instead of a file"
+        )
+        self._url_edit.textEdited.connect(self._on_url_edited)
+        io_form.addRow("유튜브 링크 / YouTube link", self._url_edit)
+        io_form.addRow("", _desc_label(
+            "링크를 입력하면 음원을 자동으로 받아 처리합니다. 출력 폴더를 비워 두면 "
+            "홈 폴더의 BandPrepareOutput/<제목> 에 저장됩니다. / "
+            "Audio is fetched automatically; an empty output folder → "
+            "BandPrepareOutput/<title> under your home folder."
+        ))
 
         self._output_edit = QLineEdit()
         self._output_edit.setPlaceholderText(
@@ -332,8 +352,18 @@ class MainWindow(QMainWindow):
 
     def _set_input(self, path: str) -> None:
         self._input_edit.setText(path)
+        # A file and a URL are mutually exclusive inputs; picking a file clears
+        # any URL so the file is unambiguously used.
+        self._url_edit.clear()
         # Pre-fill the output folder from the input filename.
         self._output_edit.setText(str(default_output_dir(path)))
+
+    def _on_url_edited(self, text: str) -> None:
+        # Typing a URL clears the chosen file (URL takes precedence) and the
+        # file-derived output folder, so it defaults to the title-based one.
+        if text.strip():
+            self._input_edit.clear()
+            self._output_edit.clear()
 
     # ---- drag and drop ------------------------------------------------------
 
@@ -362,15 +392,14 @@ class MainWindow(QMainWindow):
     # ---- run ----------------------------------------------------------------
 
     def _collect_options(self) -> Options | None:
+        url_text = self._url_edit.text().strip()
         input_text = self._input_edit.text().strip()
-        if not input_text:
+        if not url_text and not input_text:
             self._append_log(
-                "입력 파일을 먼저 선택하세요. / Please choose an input file first."
+                "입력 파일이나 유튜브/URL 링크를 먼저 입력하세요. / "
+                "Please choose an input file or paste a URL first."
             )
             return None
-        output_text = self._output_edit.text().strip()
-        if not output_text:
-            output_text = str(default_output_dir(input_text))
 
         stems = [name for name, cb in self._stem_checks.items() if cb.isChecked()]
         if not stems:
@@ -383,9 +412,25 @@ class MainWindow(QMainWindow):
         if self._minus_group.isChecked():
             minus = [name for name, cb in self._minus_checks.items() if cb.isChecked()]
 
+        output_text = self._output_edit.text().strip()
+
+        # Input/output paths differ between a URL (downloaded by the worker) and a
+        # local file; everything else is gathered identically above.
+        if url_text:
+            # URL takes precedence. input_path is filled by the worker after the
+            # download; a blank output → title-based folder under the home dir.
+            input_path: Path | None = None
+            output_dir: Path | None = Path(output_text) if output_text else None
+            source_url: str | None = url_text
+        else:
+            input_path = Path(input_text)
+            output_dir = Path(output_text or str(default_output_dir(input_text)))
+            source_url = None
+
         return build_options(
-            input_path=Path(input_text),
-            output_dir=Path(output_text),
+            input_path=input_path,
+            output_dir=output_dir,
+            source_url=source_url,
             stem_model=self._current_stem_id(),
             drum_model=self._drum_combo.currentData() or registry.DEFAULT_DRUM_MODEL,
             stems=stems,
@@ -405,6 +450,8 @@ class MainWindow(QMainWindow):
         if opts is None:
             return
 
+        # For a URL the output folder is only known after the download resolves
+        # the title; the worker reports it via the `resolved` signal below.
         self._last_output_dir = opts.output_dir
         self._run_btn.setEnabled(False)
         self._open_btn.setEnabled(False)
@@ -416,6 +463,7 @@ class MainWindow(QMainWindow):
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self._on_progress)
+        self._worker.resolved.connect(self._on_resolved)
         self._worker.finished.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
         self._thread.start()
@@ -428,6 +476,12 @@ class MainWindow(QMainWindow):
         # Model-internal ticks arrive with an empty msg: bar only, no log spam.
         if msg:
             self._append_log(msg)
+
+    def _on_resolved(self, output_dir: str) -> None:
+        # URL inputs only: the worker downloaded the audio and now knows the
+        # per-song output folder — record it so "open output folder" works.
+        self._last_output_dir = Path(output_dir)
+        self._append_log(f"출력 폴더 / output: {output_dir}")
 
     def _on_finished(self, rc: int) -> None:
         if rc == 0:
@@ -473,8 +527,14 @@ def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
     import importlib
 
     app.processEvents()
-    for mod in ("torch", "torchaudio", "demucs", "soundfile", "imageio_ffmpeg", "numpy", "yaml"):
+    for mod in ("torch", "torchaudio", "demucs", "soundfile", "imageio_ffmpeg",
+                "numpy", "yaml", "yt_dlp"):
         importlib.import_module(mod)
+    # URL input (bandprepare/youtube.py): yt-dlp must import from the frozen
+    # bundle and our detection helper must work without a display/network.
+    from ..youtube import is_url
+
+    assert is_url("https://youtu.be/dQw4w9WgXcQ") and not is_url("song.mp3")
     # Bundled drum backend must import and find its vendored YAML config.
     from ..separation import registry
     from ..separation.mdx23c import _load_config
@@ -504,10 +564,12 @@ def _selftest(app: QApplication, ffmpeg_path: str | None) -> int:
     tqdm_lock = getattr(sys.modules.get("tqdm"), "tqdm", None)
     tqdm_lock = getattr(tqdm_lock, "_lock", None) if tqdm_lock else None
     mp_guard = "ok" if (tqdm_lock is not None and not hasattr(tqdm_lock, "mp_lock")) else "off"
+    import yt_dlp
+
     print(
         f"SELFTEST OK ffmpeg={ffmpeg_path!r} "
         f"stems={len(registry.STEM_MODELS)} drums={len(registry.DRUM_MODELS)} "
-        f"roformer_bs=ok roformer_mel=ok "
+        f"roformer_bs=ok roformer_mel=ok yt_dlp={yt_dlp.version.__version__} "
         f"ssl_cert={ssl_cert!r} mp_guard={mp_guard}"
     )
     return 0
