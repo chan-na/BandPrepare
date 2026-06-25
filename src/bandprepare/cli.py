@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  bandprepare song.wav -o out/ --format flac\n"
             "  bandprepare song.mp3 --stems vocals,drums,bass\n"
             "  bandprepare song.mp3 --minus bass        # 베이스 뺀 합본 / play-along\n"
+            "  bandprepare song.mp3 --minus bass --count-in 120  # 박자 카운트인 / count-in\n"
             "  bandprepare song.mp3 --drum-split    # 드럼 세부 분리 / split the drum kit\n"
             "  bandprepare song.mp3 --drum-split --drum-model drumsep\n"
             "  bandprepare song.mp3 --stem-model htdemucs_6s\n"
@@ -64,6 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--minus", type=str, default=None, metavar="STEM[,STEM...]",
                         help="해당 악기를 뺀 합본(마이너스원) 생성 / mix minus the given stem(s), "
                              "comma-separated (e.g. --minus vocals or --minus vocals,bass)")
+    parser.add_argument("--count-in", type=float, default=None, metavar="BPM",
+                        help="마이너스원 앞에 해당 BPM 의 메트로놈 클릭(삐 삐 삐 삐) 카운트인 추가 "
+                             "(--minus 필요) / prepend a metronome count-in at the given BPM "
+                             "to the mix-minus (requires --minus), e.g. --count-in 120")
+    parser.add_argument("--count-in-bars", type=int, default=1, metavar="N",
+                        help="카운트인 마디 수 (기본 1) / count-in length in bars (default 1)")
+    parser.add_argument("--count-in-beats", type=int, default=4, metavar="N",
+                        help="한 마디 박자 수 (기본 4 = 4/4박자) / beats per bar (default 4)")
     parser.add_argument("--drum-split", action=argparse.BooleanOptionalAction,
                         default=False,
                         help="드럼 스템을 킥/스네어 등 조각으로 세부 분리 (기본: 꺼짐) / "
@@ -156,6 +165,25 @@ def main(argv: list[str] | None = None) -> int:
         # de-duplicate while preserving the model's canonical order
         minus = [s for s in stem_info.output_stems if s in requested]
 
+    # Count-in click track validation. Tempo is user-supplied; it only affects
+    # the mix-minus output, so warn (don't fail) when set without --minus.
+    count_in_bpm = args.count_in
+    if count_in_bpm is not None:
+        if count_in_bpm <= 0:
+            parser.error("--count-in: BPM 은 0보다 커야 합니다 / BPM must be positive")
+            return EXIT_USAGE  # unreachable, for type-checkers
+        if args.count_in_bars < 1 or args.count_in_beats < 1:
+            parser.error(
+                "--count-in-bars/--count-in-beats 는 1 이상이어야 합니다 / "
+                "must be >= 1"
+            )
+            return EXIT_USAGE  # unreachable, for type-checkers
+        if not minus:
+            logger.warning(
+                "  ! --count-in 은 마이너스원에만 적용됩니다 — --minus 가 없어 무시됩니다 / "
+                "--count-in only affects the mix-minus; ignored without --minus."
+            )
+
     # Wiener filtering is a LarsNet-specific knob; warn (don't fail) if the user
     # set it while a different drum model is selected.
     wiener_explicit = args.no_drum_wiener or args.drum_wiener is not None
@@ -210,6 +238,9 @@ def main(argv: list[str] | None = None) -> int:
             overwrite=args.overwrite,
             verbose=args.verbose,
             minus=minus,
+            count_in_bpm=count_in_bpm,
+            count_in_bars=args.count_in_bars,
+            count_in_beats_per_bar=args.count_in_beats,
         )
         return run(opts)
     except BandPrepareError as exc:

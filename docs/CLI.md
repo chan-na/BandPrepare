@@ -251,6 +251,25 @@ bandprepare-cli 내곡.mp3 --minus vocals,bass   # 여러 개는 콤마로 (둘 
 > - `--stems`(개별 스템 저장)와는 **독립**이라, 저장하지 않은 악기도 뺄 수 있습니다.
 > - 드럼은 통째로(`--minus drums`)만 가능하고, 킥·스네어 같은 **드럼 조각 단위는 아직 미지원**입니다.
 
+#### 🥁 박자 카운트인 넣기 (`--count-in`)
+
+마이너스원을 틀자마자 음악이 바로 시작하면 박자를 맞춰 들어가기 어렵습니다.
+`--count-in <BPM>` 을 주면 합본 **맨 앞에 그 템포의 클릭(삐 삐 삐 삐)** 이 붙어,
+밴드가 박자를 세고 다음 첫 박에 함께 들어갈 수 있습니다.
+**곡의 BPM 은 직접 입력**합니다(자동 감지 아님).
+
+```bash
+bandprepare-cli 내곡.mp3 --minus bass --count-in 120         # 1마디(4박) 카운트인 후 시작
+bandprepare-cli 내곡.mp3 --minus vocals --count-in 90 --count-in-bars 2   # 2마디(8박)
+bandprepare-cli 내곡.mp3 --minus drums --count-in 140 --count-in-beats 3  # 3/4박자
+```
+
+- 첫 박(다운비트)은 더 높은 음·큰 음량으로 구분되고, 카운트인 길이만큼 박을 센 뒤
+  **바로 다음 박에 원곡이 시작**됩니다(예: 120 BPM·1마디 → 클릭 2초 + 원곡).
+- 파일명에 템포가 표시됩니다: `mixes/minus-bass-count120.wav`
+  (카운트인 없는 `minus-bass.wav` 와 별도 파일이라 덮어쓰지 않습니다).
+- `--minus` 가 있어야 적용됩니다(없으면 무시).
+
 <details>
 <summary>대안 — DAW/ffmpeg로 직접 합치기 (수동)</summary>
 
